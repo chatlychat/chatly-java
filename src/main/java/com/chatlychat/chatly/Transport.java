@@ -342,7 +342,18 @@ public final class Transport {
       case 403 -> new PermissionException(detail, status, code, requestId, raw, null);
       case 404 -> new NotFoundException(detail, status, code, requestId, raw, null);
       case 409 -> new ConflictException(detail, status, code, requestId, raw, null);
-      case 422 -> new ValidationException(detail, status, code, requestId, raw, null);
+      /*
+       * 400 AND 422.
+       *
+       * This mapped 422 alone, and nothing in this API answers 422:
+       * `ValidationError` in `packages/shared/src/errors` is
+       * `httpStatus: 400, code: validation_failed`, and the exception filter
+       * maps a raw `ZodError` the same way. So every real validation failure
+       * arrived as a bare `ChatlyException` and the README's own
+       * `catch (ValidationException …)` could never fire. 422 is kept because
+       * mapping both costs nothing and a future route may use it.
+       */
+      case 400, 422 -> new ValidationException(detail, status, code, requestId, raw, null);
       case 429 ->
           new RateLimitException(
               detail, status, code, requestId, raw, parseRetryAfter(response), null);

@@ -195,13 +195,13 @@ class LoopbackServerTest {
 
     client()
         .search()
-        .query("needs follow up", Query.of().add("kinds[]", "kb").add("kinds[]", "article"));
+        .query("needs follow up", Query.of().add("kinds", "kb").add("kinds", "ticket"));
 
     String uri = received.get(0).uri();
     assertTrue(uri.startsWith("/v1/search?"), uri);
     assertTrue(uri.contains("q=needs+follow+up"), uri);
-    assertTrue(uri.contains("kinds%5B%5D=kb"), uri);
-    assertTrue(uri.contains("kinds%5B%5D=article"), uri);
+    assertTrue(uri.contains("kinds=kb"), uri);
+    assertTrue(uri.contains("kinds=ticket"), uri);
   }
 
   @Test

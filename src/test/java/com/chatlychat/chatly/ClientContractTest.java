@@ -541,11 +541,11 @@ class ClientContractTest {
       sender
           .client()
           .search()
-          .query("refund", Query.of().add("kinds[]", "kb").add("kinds[]", "article"));
+          .query("refund", Query.of().add("kinds", "kb").add("kinds", "ticket"));
 
       String url = sender.lastRequest().url();
-      assertTrue(url.contains("kinds%5B%5D=kb"), url);
-      assertTrue(url.contains("kinds%5B%5D=article"), url);
+      assertTrue(url.contains("kinds=kb"), url);
+      assertTrue(url.contains("kinds=ticket"), url);
       assertFalse(url.contains("kb%2Carticle"), "comma-joining asks for one kind named 'kb,article'");
     }
 

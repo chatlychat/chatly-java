@@ -78,7 +78,7 @@ the key actually has, which turns a mis-scoped key into an obvious error on line
 ```java
 Chatly chatly = Chatly.builder()
     .apiKey(System.getenv("CHATLY_API_KEY"))
-    .baseUrl("https://chatly.internal.acme.io")   // self-hosted; default is api.chatlychat.com
+    .baseUrl("http://localhost:4010")             // another environment; default is api.chatlychat.com
     .timeout(Duration.ofSeconds(30))              // per attempt; default 15s
     .retryPolicy(RetryPolicy.defaults().withMaxRetries(4))
     .httpClient(myHttpClient)                     // your own proxy / SSLContext / executor
@@ -336,15 +336,17 @@ try {
 | `PermissionException` | 403 — key valid, scope missing, or route needs a human |
 | `NotFoundException` | 404 — no such row, **or** it is in another workspace |
 | `ConflictException` | 409 — conflict, including an idempotency-key/body mismatch |
-| `ValidationException` | 422 — payload failed the API's schema |
+| `ValidationException` | 400 (and 422, which this API does not send) — payload failed the API's schema |
 | `RateLimitException` | 429 — carries `retryAfter()` |
 | `ServerException` | 5xx — already retried before it reached you |
 | `TransportException` | DNS, connect, TLS, timeout, interrupt. `status()` is `0` |
 | `ChatlyException` | any other non-2xx, and the base type to catch |
 
 `requestId()` is the `x-request-id` response header. Quote it in a support ticket — it finds the
-exact request in our logs. It is set by our edge proxy, so on a self-hosted install with no proxy in
-front it may legitimately be absent; the `Optional` is empty rather than a fabricated value.
+exact request in our logs. The API mints an id for every request and echoes the header on every
+response, errors included, so it is normally present; when a response arrives without one — a
+transport failure never got a response at all — the `Optional` is empty rather than a fabricated
+value.
 
 **`PermissionException` versus `AuthenticationException` is a distinction worth having.** One means
 "mint a new key", the other means "add a scope to the key you have". You should never have to parse

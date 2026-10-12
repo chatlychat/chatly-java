@@ -344,8 +344,8 @@ class JsonTest {
 
     @Test
     void repeatedKeysStayRepeated() {
-      Query q = Query.of().add("kinds[]", "kb").add("kinds[]", "article");
-      assertEquals("kinds%5B%5D=kb&kinds%5B%5D=article", q.encode());
+      Query q = Query.of().add("kinds", "kb").add("kinds", "ticket");
+      assertEquals("kinds=kb&kinds=ticket", q.encode());
     }
 
     @Test

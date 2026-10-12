@@ -352,8 +352,8 @@ public final class Verify {
     truth(rejectedEmptyKey, "an empty API key is refused at construction");
 
     eq(
-        "kinds%5B%5D=kb&kinds%5B%5D=article",
-        Query.of().add("kinds[]", "kb").add("kinds[]", "article").encode(),
+        "kinds=kb&kinds=ticket",
+        Query.of().add("kinds", "kb").add("kinds", "ticket").encode(),
         "repeated query keys stay repeated");
     eq(
         "needs%20follow%20up",
