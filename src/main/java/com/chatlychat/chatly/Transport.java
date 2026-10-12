@@ -343,15 +343,23 @@ public final class Transport {
       case 404 -> new NotFoundException(detail, status, code, requestId, raw, null);
       case 409 -> new ConflictException(detail, status, code, requestId, raw, null);
       /*
-       * 400 AND 422.
+       * 400 AND 422. Both are real; the interesting one is 400.
        *
-       * This mapped 422 alone, and nothing in this API answers 422:
-       * `ValidationError` in `packages/shared/src/errors` is
+       * This mapped 422 alone, which was the bug: SCHEMA validation in this API
+       * is 400, not 422. `ValidationError` in `packages/shared/src/errors` is
        * `httpStatus: 400, code: validation_failed`, and the exception filter
-       * maps a raw `ZodError` the same way. So every real validation failure
-       * arrived as a bare `ChatlyException` and the README's own
-       * `catch (ValidationException …)` could never fire. 422 is kept because
-       * mapping both costs nothing and a future route may use it.
+       * maps a raw `ZodError` the same way. So the common case — a malformed
+       * payload — arrived as a bare `ChatlyException` and the README's own
+       * `catch (ValidationException …)` could never fire for it.
+       *
+       * 422 is NOT dead code, and a comment here previously said it was.
+       * `apps/api/src/modules/macros/macro-action-runner.ts` throws 422 twice
+       * (an action removed from the registry, and an action that failed at
+       * run time, each naming the action's index), and
+       * `modules/hired-agents/hired-agents.service.ts` twice more. The macros
+       * ones are reachable with an API key, so an SDK caller can see a 422
+       * today. Both statuses mean "well-formed request, rejected on content",
+       * which is one branch for a caller, so they share one type.
        */
       case 400, 422 -> new ValidationException(detail, status, code, requestId, raw, null);
       case 429 ->

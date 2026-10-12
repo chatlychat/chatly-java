@@ -262,14 +262,7 @@ class SurfaceLockTest {
     return sb.toString();
   }
 
-  /**
-   * Walk up from the working directory looking for the manifest.
-   *
-   * <p>Not a hardcoded {@code ../../}: surefire's working directory is the module, but a developer
-   * running one test from an IDE may be rooted anywhere, and a relative path that resolves in one
-   * and not the other is a test that fails for reasons unrelated to the code.
-   */
-  /** Whichever candidate exists under {@code root}. */
+  /** Whichever of {@link #MANIFEST_CANDIDATES} exists under {@code root}. */
   private static Path manifestIn(Path root) {
     for (String candidate : MANIFEST_CANDIDATES) {
       Path p = root.resolve(candidate);
@@ -280,6 +273,13 @@ class SurfaceLockTest {
     return root.resolve(MANIFEST);
   }
 
+  /**
+   * Walk up from the working directory looking for the manifest.
+   *
+   * <p>Not a hardcoded {@code ../../}: surefire's working directory is the module, but a developer
+   * running one test from an IDE may be rooted anywhere, and a relative path that resolves in one
+   * and not the other is a test that fails for reasons unrelated to the code.
+   */
   private static Path findRepoRoot() {
     Path dir = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
     for (Path p = dir; p != null; p = p.getParent()) {

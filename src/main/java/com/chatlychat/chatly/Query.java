@@ -10,9 +10,9 @@ import java.util.Map;
  * An ordered, <strong>multi-valued</strong> query string builder.
  *
  * <p>Multi-valued is the whole point. The Chatly API takes repeated keys as repeated keys —
- * {@code kinds[]=kb&kinds[]=article} is two parameters, and comma-joining them into
- * {@code kinds[]=kb,article} asks for one kind literally named {@code "kb,article"}, which matches
- * nothing and returns an empty list rather than an error. A {@code Map<String,String>} cannot
+ * {@code kinds=kb&kinds=ticket} is two parameters, and comma-joining them into
+ * {@code kinds=kb,ticket} asks for one kind literally named {@code "kb,ticket"}, which is not a
+ * member of the server's enum and is a 400. A {@code Map<String,String>} cannot
  * express this, so the SDK does not use one.
  *
  * <p>Ordering is preserved so that a request is reproducible from its log line.

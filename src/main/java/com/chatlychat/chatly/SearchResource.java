@@ -36,13 +36,26 @@ public final class SearchResource extends Resource {
   /**
    * Search everything, with extra query parameters.
    *
-   * <p>Narrow by kind with repeated {@code kinds[]} parameters:
+   * <p>Narrow by kind with a repeated {@code kinds} parameter:
    *
    * <pre>{@code
-   * chatly.search().query("refund", Query.of().add("kinds[]", "kb").add("kinds[]", "article"));
+   * chatly.search().query("refund", Query.of().add("kinds", "kb").add("kinds", "ticket"));
    * }</pre>
    *
-   * Note those are two parameters, not one comma-joined value — see {@link Query}.
+   * <p>Those are two parameters, not one comma-joined value — see {@link Query}.
+   *
+   * <p>The valid kinds are exactly {@code contact}, {@code conversation}, {@code message},
+   * {@code ticket} and {@code kb}. Anything else is a {@code 400}, because the server validates
+   * against an enum — so {@code "article"} is not a kind, however much it reads like one. Omit the
+   * parameter to search all five.
+   *
+   * <p><strong>Plain {@code kinds}, not {@code kinds[]}.</strong> The server accepts the bracketed
+   * spelling today only because a compatibility shim folds it
+   * ({@code foldKinds} in {@code packages/shared/src/search/index.ts}), added after the bracketed
+   * form was found to be silently stripped — which made every narrowed search run unnarrowed and
+   * return a complete, valid, wrong answer with a 200. {@code kinds} is the canonical key the
+   * schema actually declares, and it is what this SDK sends; a new client should not be built on a
+   * shim that exists for older ones.
    */
   public Page<Map<String, Object>> query(String term, Query query) {
     return page(PATH, q(query).copy().set("q", checkTerm(term)));
@@ -54,13 +67,15 @@ public final class SearchResource extends Resource {
   }
 
   /**
-   * Help-centre articles only — {@code /v1/search} narrowed to {@code kinds[]=kb}.
+   * Help-centre articles only — {@code /v1/search} narrowed to {@code kinds=kb}.
    *
    * <p>Its own method because "find the article that answers this" is the common case, and getting
-   * there otherwise means knowing that the {@code kinds[]} parameter exists at all.
+   * there otherwise means knowing that the {@code kinds} parameter exists at all.
+   *
+   * <p>{@code kb} is the knowledge-base kind. There is no {@code article} kind; see {@link #query}.
    */
   public Page<Map<String, Object>> kb(String term) {
-    return query(term, Query.of().add("kinds[]", "kb"));
+    return query(term, Query.of().add("kinds", "kb"));
   }
 
   private static String checkTerm(String term) {

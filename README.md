@@ -107,24 +107,24 @@ Return types: `Map<String, Object>` for a JSON object, `List<Map<String, Object>
 
 ### Root
 
-| Method | HTTP |
-| --- | --- |
+| Method            | HTTP                      |
+| ----------------- | ------------------------- |
 | `chatly.whoami()` | `GET /v1/api-keys/whoami` |
 
 ### `chatly.contacts()`
 
-| Method | HTTP |
-| --- | --- |
-| `list()` / `list(Query)` → `Page` | `GET /v1/contacts` |
-| `listAuto()` / `listAuto(Query)` → `Pager` | `GET /v1/contacts` (walked) |
-| `get(contactId)` | `GET /v1/contacts/{id}` |
-| `upsert(Map)` | `POST /v1/contacts` |
-| `bulkUpsert(List<Map>)` — 1 to 5000 rows | `POST /v1/contacts/bulk` |
-| `merge(contactId, mergedId)` | `POST /v1/contacts/{id}/merge` |
-| `addTags(contactId, tag)` — also `addTag(…)` | `POST /v1/contacts/{id}/tags` |
-| `removeTag(contactId, tag)` | `DELETE /v1/contacts/{id}/tags/{tag}` |
-| `unsubscribe(contactId, boolean)` | `POST /v1/contacts/{id}/unsubscribe` |
-| `journey(contactId)` → `Page`, `journeyAuto(…)` | `GET /v1/contacts/{id}/journey` |
+| Method                                          | HTTP                                  |
+| ----------------------------------------------- | ------------------------------------- |
+| `list()` / `list(Query)` → `Page`               | `GET /v1/contacts`                    |
+| `listAuto()` / `listAuto(Query)` → `Pager`      | `GET /v1/contacts` (walked)           |
+| `get(contactId)`                                | `GET /v1/contacts/{id}`               |
+| `upsert(Map)`                                   | `POST /v1/contacts`                   |
+| `bulkUpsert(List<Map>)` — 1 to 5000 rows        | `POST /v1/contacts/bulk`              |
+| `merge(contactId, mergedId)`                    | `POST /v1/contacts/{id}/merge`        |
+| `addTags(contactId, tag)` — also `addTag(…)`    | `POST /v1/contacts/{id}/tags`         |
+| `removeTag(contactId, tag)`                     | `DELETE /v1/contacts/{id}/tags/{tag}` |
+| `unsubscribe(contactId, boolean)`               | `POST /v1/contacts/{id}/unsubscribe`  |
+| `journey(contactId)` → `Page`, `journeyAuto(…)` | `GET /v1/contacts/{id}/journey`       |
 
 `upsert` matches on `externalId` (falling back to `email`) and updates the existing row when it
 finds one. Every field is optional server-side, so `upsert(Map.of())` creates an anonymous contact
@@ -136,20 +136,20 @@ shared cross-language surface list; `addTag` is the same call under a name that 
 
 ### `chatly.conversations()`
 
-| Method | HTTP |
-| --- | --- |
-| `list()` / `list(Query)` → `Page`, `listAuto(…)` | `GET /v1/conversations` |
-| `get(conversationId)` | `GET /v1/conversations/{id}` |
-| `messages(conversationId)` → `Page`, `messagesAuto(…)` | `GET /v1/conversations/{id}/messages` |
-| `send(conversationId, String)` / `send(conversationId, Map)` | `POST /v1/conversations/{id}/messages` |
-| `unattended()` → `Page` (plus `total()`) | `GET /v1/conversations/unattended` |
-| `agentHandling(conversationId)` | `GET /v1/conversations/{id}/agent-handling` |
-| `setAgentHandling(conversationId, state)` | `PUT /v1/conversations/{id}/agent-handling` |
-| `generatedReplies(conversationId)` → `List` | `GET /v1/conversations/{id}/generated-replies` |
-| `generateReply(conversationId, body)` | `POST /v1/conversations/{id}/generated-replies` |
-| `scheduledMessages(conversationId)` → `List` | `GET /v1/conversations/{id}/scheduled-messages` |
-| `scheduleMessage(conversationId, body, sendAt)` | `POST /v1/conversations/{id}/scheduled-messages` |
-| `cancelScheduled(scheduledMessageId)` | `DELETE /v1/conversations/scheduled-messages/{id}` |
+| Method                                                       | HTTP                                               |
+| ------------------------------------------------------------ | -------------------------------------------------- |
+| `list()` / `list(Query)` → `Page`, `listAuto(…)`             | `GET /v1/conversations`                            |
+| `get(conversationId)`                                        | `GET /v1/conversations/{id}`                       |
+| `messages(conversationId)` → `Page`, `messagesAuto(…)`       | `GET /v1/conversations/{id}/messages`              |
+| `send(conversationId, String)` / `send(conversationId, Map)` | `POST /v1/conversations/{id}/messages`             |
+| `unattended()` → `Page` (plus `total()`)                     | `GET /v1/conversations/unattended`                 |
+| `agentHandling(conversationId)`                              | `GET /v1/conversations/{id}/agent-handling`        |
+| `setAgentHandling(conversationId, state)`                    | `PUT /v1/conversations/{id}/agent-handling`        |
+| `generatedReplies(conversationId)` → `List`                  | `GET /v1/conversations/{id}/generated-replies`     |
+| `generateReply(conversationId, body)`                        | `POST /v1/conversations/{id}/generated-replies`    |
+| `scheduledMessages(conversationId)` → `List`                 | `GET /v1/conversations/{id}/scheduled-messages`    |
+| `scheduleMessage(conversationId, body, sendAt)`              | `POST /v1/conversations/{id}/scheduled-messages`   |
+| `cancelScheduled(scheduledMessageId)`                        | `DELETE /v1/conversations/scheduled-messages/{id}` |
 
 `send` posts a message immediately. `generateReply` creates a **draft** a human can approve, edit or
 reject — use that one when your agent must not speak to a customer unreviewed.
@@ -163,24 +163,24 @@ a local date-time with no offset is rejected rather than guessed at.
 
 ### `chatly.tickets()`
 
-| Method | HTTP |
-| --- | --- |
-| `list()` / `list(Query)` → `Page`, `listAuto(…)` | `GET /v1/tickets` |
-| `comments(ticketId)` → `List` | `GET /v1/tickets/{id}/comments` |
-| `forConversation(conversationId)` → `List` | `GET /v1/tickets/for-conversation/{id}` |
-| `queues()` → `List` | `GET /v1/tickets/queues` |
-| `merge(ticketId, loserId)` | `POST /v1/tickets/{id}/merge` |
-| `split(ticketId, title)` | `POST /v1/tickets/{id}/split` |
-| `bulk(List<String> ids, action)` / `bulk(Map)` | `POST /v1/tickets/bulk` |
+| Method                                           | HTTP                                    |
+| ------------------------------------------------ | --------------------------------------- |
+| `list()` / `list(Query)` → `Page`, `listAuto(…)` | `GET /v1/tickets`                       |
+| `comments(ticketId)` → `List`                    | `GET /v1/tickets/{id}/comments`         |
+| `forConversation(conversationId)` → `List`       | `GET /v1/tickets/for-conversation/{id}` |
+| `queues()` → `List`                              | `GET /v1/tickets/queues`                |
+| `merge(ticketId, loserId)`                       | `POST /v1/tickets/{id}/merge`           |
+| `split(ticketId, title)`                         | `POST /v1/tickets/{id}/split`           |
+| `bulk(List<String> ids, action)` / `bulk(Map)`   | `POST /v1/tickets/bulk`                 |
 
 ### `chatly.macros()`
 
-| Method | HTTP |
-| --- | --- |
-| `list()` / `list(Query)` → `List` | `GET /v1/macros` |
-| `create(Map)` | `POST /v1/macros` |
-| `update(macroId, Map)` | `PATCH /v1/macros/{id}` |
-| `delete(macroId)` → `void` | `DELETE /v1/macros/{id}` |
+| Method                            | HTTP                     |
+| --------------------------------- | ------------------------ |
+| `list()` / `list(Query)` → `List` | `GET /v1/macros`         |
+| `create(Map)`                     | `POST /v1/macros`        |
+| `update(macroId, Map)`            | `PATCH /v1/macros/{id}`  |
+| `delete(macroId)` → `void`        | `DELETE /v1/macros/{id}` |
 
 `create` requires `name`, `scope`, and either a `body` or a non-empty `actions` array; `teamId` is
 required when `scope` is `"team"`. The server enforces that; the SDK does not duplicate the
@@ -194,61 +194,76 @@ the route is pagination-exempt. There is no `listAuto` because there is nothing 
 
 ### `chatly.kb()`
 
-| Method | HTTP |
-| --- | --- |
-| `articles()` → `Page`, `articlesAuto(…)` | `GET /v1/kb/articles` |
-| `article(slug)` | `GET /v1/kb/articles/{slug}` |
-| `collections()` → `List` | `GET /v1/kb/collections` |
+| Method                                   | HTTP                         |
+| ---------------------------------------- | ---------------------------- |
+| `articles()` → `Page`, `articlesAuto(…)` | `GET /v1/kb/articles`        |
+| `article(slug)`                          | `GET /v1/kb/articles/{slug}` |
+| `collections()` → `List`                 | `GET /v1/kb/collections`     |
 
 ### `chatly.search()`
 
-| Method | HTTP |
-| --- | --- |
-| `query(term)` / `query(term, Query)` → `Page`, `queryAuto(…)` | `GET /v1/search?q=…` |
-| `kb(term)` → `Page` | `GET /v1/search?q=…&kinds[]=kb` |
+| Method                                                        | HTTP                            |
+| ------------------------------------------------------------- | ------------------------------- |
+| `query(term)` / `query(term, Query)` → `Page`, `queryAuto(…)` | `GET /v1/search?q=…`            |
+| `kb(term)` → `Page`                                           | `GET /v1/search?q=…&kinds=kb` |
 
 The term is required and capped at 256 characters; both bounds are the server's and are checked
 locally so an over-long term fails before the round trip. The page carries `facets` and `tier` on
 `page.raw()` — `tier` tells you which backend answered, which is the first thing to look at when
 results surprise you.
 
+Narrow with a repeated `kinds` parameter — two parameters, not one comma-joined value:
+
+```java
+chatly.search().query("refund", Query.of().add("kinds", "kb").add("kinds", "ticket"));
+```
+
+The valid kinds are exactly `contact`, `conversation`, `message`, `ticket` and `kb`. Anything else
+is a `400`, because the server validates against an enum — so `article` is **not** a kind, however
+much it reads like one. Omit the parameter to search all five.
+
+Send plain `kinds`, not `kinds[]`. The server does accept the bracketed spelling, but only via a
+compatibility shim added after that form was found to be silently *stripped* — which made every
+narrowed search run unnarrowed and return a complete, valid, wrong answer with a `200`. `kinds` is
+the key the schema declares.
+
 ### `chatly.events()`
 
-| Method | HTTP |
-| --- | --- |
+| Method                                                     | HTTP                  |
+| ---------------------------------------------------------- | --------------------- |
 | `track(contactId, name)` / `track(contactId, name, props)` | `POST /v1/cdp/events` |
-| `list()` / `list(Query)` → `Page`, `listAuto(…)` | `GET /v1/cdp/events` |
+| `list()` / `list(Query)` → `Page`, `listAuto(…)`           | `GET /v1/cdp/events`  |
 
 Scope the read to one person with `Query.of().add("contactId", id)`.
 
 ### `chatly.webhooks()`
 
-| Method | HTTP |
-| --- | --- |
-| `deliveries()` → `Page`, `deliveriesAuto(…)` | `GET /v1/webhooks/deliveries` |
-| `delivery(deliveryId)` | `GET /v1/webhooks/deliveries/{id}` |
-| `redeliver(deliveryId)` | `POST /v1/webhooks/deliveries/{id}/redeliver` |
+| Method                                       | HTTP                                          |
+| -------------------------------------------- | --------------------------------------------- |
+| `deliveries()` → `Page`, `deliveriesAuto(…)` | `GET /v1/webhooks/deliveries`                 |
+| `delivery(deliveryId)`                       | `GET /v1/webhooks/deliveries/{id}`            |
+| `redeliver(deliveryId)`                      | `POST /v1/webhooks/deliveries/{id}/redeliver` |
 
-For *verifying* an incoming delivery, see [Webhook verification](#webhook-verification) — that is a
+For _verifying_ an incoming delivery, see [Webhook verification](#webhook-verification) — that is a
 static helper and needs no client.
 
 ### `chatly.reports()`
 
 Every method takes an optional `Query` for the date range. None is paginated.
 
-| Method | HTTP | Shape |
-| --- | --- | --- |
-| `overview()` | `GET /v1/reports/overview` | object |
-| `agents()` | `GET /v1/reports/agents` | **array**, one row per agent |
-| `conversationsByDay()` | `GET /v1/reports/conversations-by-day` | **array** of `{day, count}` |
-| `sla()` | `GET /v1/reports/sla` | object |
+| Method                 | HTTP                                   | Shape                        |
+| ---------------------- | -------------------------------------- | ---------------------------- |
+| `overview()`           | `GET /v1/reports/overview`             | object                       |
+| `agents()`             | `GET /v1/reports/agents`               | **array**, one row per agent |
+| `conversationsByDay()` | `GET /v1/reports/conversations-by-day` | **array** of `{day, count}`  |
+| `sla()`                | `GET /v1/reports/sla`                  | object                       |
 
 ### `chatly.channels()`
 
-| Method | HTTP |
-| --- | --- |
-| `list()` → `List` | `GET /v1/channels` |
-| `get(channelId)` | `GET /v1/channels/{id}` |
+| Method            | HTTP                    |
+| ----------------- | ----------------------- |
+| `list()` → `List` | `GET /v1/channels`      |
+| `get(channelId)`  | `GET /v1/channels/{id}` |
 
 Read-only. Creating or configuring a channel needs `channels:write`, which no key-accessible route
 grants, so there is no `create` or `update` here.
@@ -259,9 +274,9 @@ sends that boolean to make the difference visible.
 
 ### `chatly.billing()`
 
-| Method | HTTP |
-| --- | --- |
-| `plans()` → `List` | `GET /v1/billing/plans` |
+| Method                                         | HTTP                                |
+| ---------------------------------------------- | ----------------------------------- |
+| `plans()` → `List`                             | `GET /v1/billing/plans`             |
 | `usage(eventType)` / `usage(eventType, Query)` | `GET /v1/billing/usage?eventType=…` |
 
 `eventType` is required and must be a known meter — an unrecognised value is a 400, not an empty
@@ -271,26 +286,26 @@ the API accepts.
 
 ### `chatly.workspace()`
 
-| Method | HTTP |
-| --- | --- |
-| `settings()` | `GET /v1/workspace/settings` |
-| `labels()` → `List` | `GET /v1/labels` |
-| `inboxes()` → `List` | `GET /v1/inboxes` |
+| Method                         | HTTP                         |
+| ------------------------------ | ---------------------------- |
+| `settings()`                   | `GET /v1/workspace/settings` |
+| `labels()` → `List`            | `GET /v1/labels`             |
+| `inboxes()` → `List`           | `GET /v1/inboxes`            |
 | `teamMembers(teamId)` → `List` | `GET /v1/teams/{id}/members` |
-| `agentSkills()` | `GET /v1/agents/skills` |
+| `agentSkills()`                | `GET /v1/agents/skills`      |
 
 `agentSkills()` returns an **object**, not an array — `{"skills": ["billing", "german"]}` — the
 distinct skill labels in use across the workspace, which is what skill-based routing matches against.
 
 **There is no method listing every team, or every agent, and that is deliberate.** `GET /v1/teams`
 carries no `@AllowApiKey()`, so it requires a signed-in person and answers every API key with 403
-whatever its scopes; `GET /v1/agents` does not exist for *any* caller, including an admin session —
+whatever its scopes; `GET /v1/agents` does not exist for _any_ caller, including an admin session —
 the agents controller declares only `/v1/agents/skills` and `/v1/agents/{userId}/skills`. Both were
 on an earlier draft of the shared surface list, and both would have been methods that always fail,
 which is worse than no method at all. So you need a team id from elsewhere (the dashboard, or a
 conversation's assignment) to call `teamMembers`.
 
-For the skills of one *specific* agent, that route exists and accepts a key but is not on the typed
+For the skills of one _specific_ agent, that route exists and accepts a key but is not on the typed
 surface — reach it through the escape hatch:
 
 ```java
@@ -330,17 +345,17 @@ try {
 }
 ```
 
-| Type | When |
-| --- | --- |
-| `AuthenticationException` | 401 — key missing, malformed, revoked |
-| `PermissionException` | 403 — key valid, scope missing, or route needs a human |
-| `NotFoundException` | 404 — no such row, **or** it is in another workspace |
-| `ConflictException` | 409 — conflict, including an idempotency-key/body mismatch |
-| `ValidationException` | 400 (and 422, which this API does not send) — payload failed the API's schema |
-| `RateLimitException` | 429 — carries `retryAfter()` |
-| `ServerException` | 5xx — already retried before it reached you |
-| `TransportException` | DNS, connect, TLS, timeout, interrupt. `status()` is `0` |
-| `ChatlyException` | any other non-2xx, and the base type to catch |
+| Type                      | When                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `AuthenticationException` | 401 — key missing, malformed, revoked                                         |
+| `PermissionException`     | 403 — key valid, scope missing, or route needs a human                        |
+| `NotFoundException`       | 404 — no such row, **or** it is in another workspace                          |
+| `ConflictException`       | 409 — conflict, including an idempotency-key/body mismatch                    |
+| `ValidationException`     | 400 — payload failed the API's schema; also 422, which a few routes use for a well-formed request rejected on content |
+| `RateLimitException`      | 429 — carries `retryAfter()`                                                  |
+| `ServerException`         | 5xx — already retried before it reached you                                   |
+| `TransportException`      | DNS, connect, TLS, timeout, interrupt. `status()` is `0`                      |
+| `ChatlyException`         | any other non-2xx, and the base type to catch                                 |
 
 `requestId()` is the `x-request-id` response header. Quote it in a support ticket — it finds the
 exact request in our logs. The API mints an id for every request and echoes the header on every
@@ -530,7 +545,7 @@ stream, you get an empty array. Read the bytes first, verify, then parse — in 
 
 `verifySignature` **returns `false` and never throws**: not for a malformed header, a missing field,
 a non-numeric `t`, a stale timestamp, a null secret or odd-length hex. A verifier that throws is an
-*accepted* webhook in a handler that forgot a `try/catch` — the exception becomes a 500, our
+_accepted_ webhook in a handler that forgot a `try/catch` — the exception becomes a 500, our
 delivery system retries it, and nobody learns that unsigned traffic was reaching the endpoint.
 Refusing by return value is the only shape that fails closed.
 
@@ -561,9 +576,9 @@ model.addAttribute("chatlyUserHash", userHash);
 ```html
 <script>
   Chatly('identify', {
-    externalId: "[[${user.id}]]",
-    userHash:   "[[${chatlyUserHash}]]",
-    email:      "[[${user.email}]]"
+    externalId: '[[${user.id}]]',
+    userHash: '[[${chatlyUserHash}]]',
+    email: '[[${user.email}]]',
   });
 </script>
 ```
@@ -633,7 +648,7 @@ own tests. Use a `LinkedHashMap` there.
 
 ## Tests
 
-145 JUnit 5 assertions across eight classes. Nothing in the suite touches the public network, needs
+151 JUnit 5 assertions across nine classes. Nothing in the suite touches the public network, needs
 an API key, or needs a running API: HTTP is driven either by an injected `Transport.Sender` or by a
 loopback `com.sun.net.httpserver.HttpServer` on an ephemeral port.
 
@@ -642,7 +657,7 @@ mvn test
 ```
 
 Both transports are used on purpose, because they catch different things: an injected sender
-validates the request the SDK *intended*; only real HTTP validates the request it actually produced.
+validates the request the SDK _intended_; only real HTTP validates the request it actually produced.
 
 ### `surface.lock.json`
 
@@ -652,8 +667,8 @@ the manifest's placeholder form. It then asserts that set equals
 `packages/sdk-spec/surface.json` — the manifest shared by every Chatly SDK.
 
 The lock is committed, and regenerating it is part of the test run rather than a script someone
-forgets. It exists because the cross-language parity gate used to match path strings in SDK *source
-text*, which credited this SDK with 55/55 while two of those methods did not exist: a Javadoc
+forgets. It exists because the cross-language parity gate used to match path strings in SDK _source
+text_, which credited this SDK with 55/55 while two of those methods did not exist: a Javadoc
 paragraph explaining that two routes were broken happened to contain their paths, and the gate read
 documentation as implementation. Executing the method cannot be fooled that way, and it also catches
 a path assembled through a helper, a one-character typo in a literal segment, and a method that
