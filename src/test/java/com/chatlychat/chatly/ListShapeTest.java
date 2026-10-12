@@ -41,15 +41,20 @@ class ListShapeTest {
   /**
    * The manifest's {@code paged} count, as an anti-vacuity floor.
    *
-   * <p><strong>7, not 8.</strong> It was 8 while {@code macros.list} was wrongly marked paged; the
-   * macros row is now annotated {@code $note: "NOT paged"} and the real figure is 7. The floor
-   * matters because every assertion below iterates the paged entries: if the manifest stopped
-   * parsing, or someone quietly unmarked a route, the loop would run over a shorter list and this
-   * file would report a pass for pagination it never checked. That failure mode — a gate reporting
-   * the number of things it managed to parse rather than the number that exist — has happened
-   * twice in this repository, so the count is pinned rather than trusted.
+   * <p><strong>10.</strong> It read 8, then 7, then 10, and the journey is the point: the flag was
+   * wrong in <em>both</em> directions at once. {@code macros.list} was flagged and is
+   * {@code @PaginationExempt} — a bare array, 200 rows by usage rank — while
+   * {@code contacts.journey}, {@code conversations.unattended} and {@code search.query} return real
+   * cursors and were not flagged. Removing the false one took it to 7; adding the three missing
+   * ones takes it to 10.
+   *
+   * <p>The floor matters because every assertion below iterates the paged entries: if the manifest
+   * stopped parsing, or someone quietly unflagged a route, the loop would run over a shorter list
+   * and this file would report a pass for pagination it never checked. That failure mode — a gate
+   * reporting the number of things it managed to parse rather than the number that exist — has
+   * happened twice in this repository, so the count is pinned rather than trusted.
    */
-  private static final int EXPECTED_PAGED_ENTRIES = 7;
+  private static final int EXPECTED_PAGED_ENTRIES = 10;
 
   // ------------------------------------------------------- paged routes
 
@@ -57,10 +62,13 @@ class ListShapeTest {
   private static Map<String, Function<Chatly, Pager<Map<String, Object>>>> pagers() {
     Map<String, Function<Chatly, Pager<Map<String, Object>>>> m = new LinkedHashMap<>();
     m.put("contacts.list", c -> c.contacts().listAuto());
+    m.put("contacts.journey", c -> c.contacts().journeyAuto("c_1", Query.of()));
     m.put("conversations.list", c -> c.conversations().listAuto());
     m.put("conversations.messages", c -> c.conversations().messagesAuto("cv_1", Query.of()));
+    m.put("conversations.unattended", c -> c.conversations().unattendedAuto());
     m.put("tickets.list", c -> c.tickets().listAuto());
     m.put("kb.articles", c -> c.kb().articlesAuto());
+    m.put("search.query", c -> c.search().queryAuto("refund", Query.of()));
     m.put("events.list", c -> c.events().listAuto());
     m.put("webhooks.deliveries", c -> c.webhooks().deliveriesAuto());
     return m;
@@ -148,62 +156,109 @@ class ListShapeTest {
   }
 
   /**
-   * Exactly which resource classes offer auto-pagination.
+   * Offers a pager <strong>if and only if</strong> the manifest marks the route paged.
    *
-   * <p>A structural assertion, by reflection, rather than one test per method. It is the check that
-   * would have caught {@code macros.listAuto} being added on the strength of a wrong manifest row:
-   * the class appearing in this set is the thing that is wrong, and no amount of behaviour testing
-   * of a method that should not exist would reveal it.
+   * <p>A biconditional, derived from the manifest rather than from a hand-kept list. This was one
+   * direction only until the {@code paged} flag was fixed: three routes that return real cursors
+   * ({@code contacts.journey}, {@code conversations.unattended}, {@code search.query}) were not
+   * flagged, so insisting on "⟺" would have condemned three correct pagers. With the flag right in
+   * both directions the stronger assertion holds, and it is the one that catches both failures —
+   * a pager missing from a paged route, and a pager offered for a route that returns a bare array.
+   *
+   * <p>Reflection by resource class rather than by method, because a method name cannot be derived
+   * from a manifest row: the auto-paginating forms are {@code listAuto}, {@code journeyAuto},
+   * {@code unattendedAuto}, {@code messagesAuto}, {@code articlesAuto}, {@code queryAuto} and
+   * {@code deliveriesAuto}. What is checkable is which classes have any, and that is exactly what
+   * would have gone wrong had {@code macros.listAuto} been written on the strength of the wrong
+   * manifest row.
    */
   @Test
-  void onlyTheIntendedResourceClassesOfferAutoPagination() {
-    List<Class<?>> resources =
-        List.of(
-            ContactsResource.class,
-            ConversationsResource.class,
-            TicketsResource.class,
-            MacrosResource.class,
-            KbResource.class,
-            SearchResource.class,
-            EventsResource.class,
-            WebhooksResource.class,
-            ReportsResource.class,
-            ChannelsResource.class,
-            BillingResource.class,
-            WorkspaceResource.class);
+  void aResourceOffersAPagerExactlyWhenTheManifestSaysPaged() {
+    Map<String, Class<?>> byNamespace = new LinkedHashMap<>();
+    byNamespace.put("contacts", ContactsResource.class);
+    byNamespace.put("conversations", ConversationsResource.class);
+    byNamespace.put("tickets", TicketsResource.class);
+    byNamespace.put("macros", MacrosResource.class);
+    byNamespace.put("kb", KbResource.class);
+    byNamespace.put("search", SearchResource.class);
+    byNamespace.put("events", EventsResource.class);
+    byNamespace.put("webhooks", WebhooksResource.class);
+    byNamespace.put("reports", ReportsResource.class);
+    byNamespace.put("channels", ChannelsResource.class);
+    byNamespace.put("billing", BillingResource.class);
+    byNamespace.put("workspace", WorkspaceResource.class);
 
-    TreeSet<String> withPagers = new TreeSet<>();
-    for (Class<?> type : resources) {
+    // What the manifest implies: a class owning at least one paged entry.
+    TreeSet<String> shouldHavePagers = new TreeSet<>();
+    for (String id : pagedEntryIds()) {
+      String ns = id.substring(0, id.indexOf('.'));
+      Class<?> type = byNamespace.get(ns);
+      // `root` has no resource class — whoami lives on Chatly itself — and it
+      // is not paged, so a null here means the manifest grew a namespace this
+      // map has not been told about. Fail rather than skip it.
+      assertTrue(type != null, "no resource class mapped for namespace `" + ns + "` (from " + id + ")");
+      shouldHavePagers.add(type.getSimpleName());
+    }
+
+    // What the code actually offers.
+    TreeSet<String> doHavePagers = new TreeSet<>();
+    for (Class<?> type : byNamespace.values()) {
       for (Method m : type.getDeclaredMethods()) {
         if (Pager.class.isAssignableFrom(m.getReturnType())) {
-          withPagers.add(type.getSimpleName());
+          doHavePagers.add(type.getSimpleName());
         }
       }
     }
 
-    // SearchResource is in this list and is NOT a manifest-paged entry: it
-    // returns a real page envelope (with `facets` and `tier` beside the items),
-    // so an auto-paginator is a genuine convenience. Same for
-    // `contacts.journey`. That is why this test is not a biconditional against
-    // the manifest's `paged` flag — `paged` means "must offer auto-pagination",
-    // not "is the only route that may".
-    TreeSet<String> expected =
-        new TreeSet<>(
-            List.of(
-                "ContactsResource",
-                "ConversationsResource",
-                "TicketsResource",
-                "KbResource",
-                "SearchResource",
-                "EventsResource",
-                "WebhooksResource"));
-
     assertEquals(
-        expected,
-        withPagers,
-        "the set of resource classes offering a Pager changed. MacrosResource in particular must"
-            + " never appear: GET /v1/macros is @PaginationExempt and returns a bare array.");
-    assertFalse(withPagers.contains("MacrosResource"));
+        shouldHavePagers,
+        doHavePagers,
+        "a resource must offer an auto-paginator exactly when the manifest marks one of its routes"
+            + " paged. MacrosResource in particular must never appear: GET /v1/macros is"
+            + " @PaginationExempt and returns a bare array.");
+    assertFalse(doHavePagers.contains("MacrosResource"));
+  }
+
+  /**
+   * The two forms of {@code /v1/search}, and what each one costs you.
+   *
+   * <p>The manifest notes that the single-page form returns the whole envelope — {@code facets} and
+   * {@code tier} sit beside the hits — and that "a paginator that yields only hits throws those
+   * away". Both halves of that are asserted here, because the tradeoff is a real choice a caller
+   * has to make and an undocumented one is a surprise: if you need the facets, do not reach for the
+   * auto-paginator.
+   *
+   * <p>{@code tier} is the more useful of the two in practice. It names which backend answered
+   * (Postgres full-text versus the vector index), and it is the first thing to look at when results
+   * are not what you expected.
+   */
+  @Test
+  void theSinglePageSearchFormKeepsTheWholeEnvelopeAndThePagerDoesNot() {
+    String envelope =
+        "{\"items\":[{\"id\":\"h1\"}],\"nextCursor\":null,"
+            + "\"facets\":{\"kind\":{\"kb\":2}},\"tier\":\"fts\"}";
+
+    // Single page: the envelope survives, reachable through raw().
+    FancyPage single = FancyPage.of(new FakeSender().then(200, envelope));
+    assertEquals("fts", single.page.raw().get("tier"));
+    assertTrue(single.page.raw().containsKey("facets"));
+    assertEquals(1, single.page.items().size());
+
+    // Auto-paginated: rows only. facets and tier are not recoverable from it,
+    // which is the documented cost of walking.
+    List<Map<String, Object>> walked =
+        new FakeSender().then(200, envelope).client().search().queryAuto("refund", Query.of())
+            .toList();
+    assertEquals(1, walked.size());
+    assertEquals("h1", walked.get(0).get("id"));
+    assertFalse(walked.get(0).containsKey("tier"), "a row is a hit, not the envelope");
+  }
+
+  /** Tiny holder so the assertion above reads as two parallel cases. */
+  private record FancyPage(Page<Map<String, Object>> page) {
+    static FancyPage of(FakeSender sender) {
+      return new FancyPage(sender.client().search().query("refund"));
+    }
   }
 
   // ------------------------------------------------------ search kinds

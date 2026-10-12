@@ -202,9 +202,9 @@ the route is pagination-exempt. There is no `listAuto` because there is nothing 
 
 ### `chatly.search()`
 
-| Method                                                        | HTTP                            |
-| ------------------------------------------------------------- | ------------------------------- |
-| `query(term)` / `query(term, Query)` → `Page`, `queryAuto(…)` | `GET /v1/search?q=…`            |
+| Method                                                        | HTTP                          |
+| ------------------------------------------------------------- | ----------------------------- |
+| `query(term)` / `query(term, Query)` → `Page`, `queryAuto(…)` | `GET /v1/search?q=…`          |
 | `kb(term)` → `Page`                                           | `GET /v1/search?q=…&kinds=kb` |
 
 The term is required and capped at 256 characters; both bounds are the server's and are checked
@@ -223,7 +223,7 @@ is a `400`, because the server validates against an enum — so `article` is **n
 much it reads like one. Omit the parameter to search all five.
 
 Send plain `kinds`, not `kinds[]`. The server does accept the bracketed spelling, but only via a
-compatibility shim added after that form was found to be silently *stripped* — which made every
+compatibility shim added after that form was found to be silently _stripped_ — which made every
 narrowed search run unnarrowed and return a complete, valid, wrong answer with a `200`. `kinds` is
 the key the schema declares.
 
@@ -345,17 +345,17 @@ try {
 }
 ```
 
-| Type                      | When                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `AuthenticationException` | 401 — key missing, malformed, revoked                                         |
-| `PermissionException`     | 403 — key valid, scope missing, or route needs a human                        |
-| `NotFoundException`       | 404 — no such row, **or** it is in another workspace                          |
-| `ConflictException`       | 409 — conflict, including an idempotency-key/body mismatch                    |
+| Type                      | When                                                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `AuthenticationException` | 401 — key missing, malformed, revoked                                                                                 |
+| `PermissionException`     | 403 — key valid, scope missing, or route needs a human                                                                |
+| `NotFoundException`       | 404 — no such row, **or** it is in another workspace                                                                  |
+| `ConflictException`       | 409 — conflict, including an idempotency-key/body mismatch                                                            |
 | `ValidationException`     | 400 — payload failed the API's schema; also 422, which a few routes use for a well-formed request rejected on content |
-| `RateLimitException`      | 429 — carries `retryAfter()`                                                  |
-| `ServerException`         | 5xx — already retried before it reached you                                   |
-| `TransportException`      | DNS, connect, TLS, timeout, interrupt. `status()` is `0`                      |
-| `ChatlyException`         | any other non-2xx, and the base type to catch                                 |
+| `RateLimitException`      | 429 — carries `retryAfter()`                                                                                          |
+| `ServerException`         | 5xx — already retried before it reached you                                                                           |
+| `TransportException`      | DNS, connect, TLS, timeout, interrupt. `status()` is `0`                                                              |
+| `ChatlyException`         | any other non-2xx, and the base type to catch                                                                         |
 
 `requestId()` is the `x-request-id` response header. Quote it in a support ticket — it finds the
 exact request in our logs. The API mints an id for every request and echoes the header on every

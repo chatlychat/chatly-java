@@ -106,6 +106,24 @@ public final class ConversationsResource extends Resource {
   }
 
   /**
+   * Every unanswered conversation, pages walked for you.
+   *
+   * <p>The route is genuinely cursor-paginated — it was briefly absent from the shared manifest's
+   * paged list, which is why this arrived after the single-page form. Note that walking the whole
+   * chain discards each page's {@code total}; if the number waiting is what you are alerting on,
+   * read {@link #unattended()} and take {@link Page#total()} rather than counting the rows this
+   * yields.
+   */
+  public Pager<Map<String, Object>> unattendedAuto() {
+    return unattendedAuto(Query.of());
+  }
+
+  /** Every unanswered conversation matching {@code query}, pages walked for you. */
+  public Pager<Map<String, Object>> unattendedAuto(Query query) {
+    return pager(COLLECTION + "/unattended", query);
+  }
+
+  /**
    * Who or what is currently handling this conversation.
    *
    * <p>{@code GET /v1/conversations/{id}/agent-handling}
