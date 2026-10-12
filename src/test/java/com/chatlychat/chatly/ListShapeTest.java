@@ -36,6 +36,16 @@ import org.junit.jupiter.api.Test;
  */
 class ListShapeTest {
 
+  /**
+   * Two spellings, for the same reason as {@code SurfaceLockTest}: the monorepo's
+   * {@code packages/sdk-spec/surface.json}, and the copy a public mirror vendors at its root,
+   * where there is no {@code packages/} above the package. This test had only the first, so it
+   * passed here and failed in the mirror's CI — which is the one CI this project has that runs.
+   */
+  private static final String[] MANIFEST_CANDIDATES = {
+    "packages/sdk-spec/surface.json", "sdk-spec/surface.json",
+  };
+
   private static final String MANIFEST = "packages/sdk-spec/surface.json";
 
   /**
@@ -312,7 +322,7 @@ class ListShapeTest {
     Path root = findRepoRoot();
     Map<String, Object> manifest;
     try {
-      manifest = Json.parseObject(Files.readString(root.resolve(MANIFEST)));
+      manifest = Json.parseObject(Files.readString(manifestIn(root)));
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -332,7 +342,7 @@ class ListShapeTest {
   private static Path findRepoRoot() {
     Path dir = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
     for (Path p = dir; p != null; p = p.getParent()) {
-      if (Files.exists(p.resolve(MANIFEST))) {
+      if (anyCandidateExists(p)) {
         return p;
       }
     }
@@ -341,5 +351,26 @@ class ListShapeTest {
             "could not find " + MANIFEST + " above " + dir + "; this test fails rather than"
                 + " skipping, because a skipped parity check that reports a pass is worse than"
                 + " no check at all."));
+  }
+
+  /** Whichever candidate exists under {@code root}. */
+  private static java.nio.file.Path manifestIn(java.nio.file.Path root) {
+    for (String candidate : MANIFEST_CANDIDATES) {
+      java.nio.file.Path p = root.resolve(candidate);
+      if (Files.exists(p)) {
+        return p;
+      }
+    }
+    return root.resolve(MANIFEST);
+  }
+
+  /** True when any candidate exists under {@code dir}. */
+  private static boolean anyCandidateExists(java.nio.file.Path dir) {
+    for (String candidate : MANIFEST_CANDIDATES) {
+      if (Files.exists(dir.resolve(candidate))) {
+        return true;
+      }
+    }
+    return false;
   }
 }
