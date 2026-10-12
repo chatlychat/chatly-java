@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.chatlychat</groupId>
+  <artifactId>chatly-java</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>Chatly Java SDK</name>
+  <description>Official Java server-side SDK for the Chatly live-chat and customer-messaging API. Zero runtime dependencies: java.net.http, javax.crypto, and a hand-written JSON codec.</description>
+  <url>https://chatlychat.com</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://github.com/chatlychat/chatly/blob/main/packages/sdk-java/LICENSE</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <organization>
+    <name>Chatly</name>
+    <url>https://chatlychat.com</url>
+  </organization>
+
+  <developers>
+    <developer>
+      <id>chatly</id>
+      <name>Chatly</name>
+      <url>https://chatlychat.com</url>
+      <organization>Chatly</organization>
+      <organizationUrl>https://chatlychat.com</organizationUrl>
+    </developer>
+  </developers>
+
+  <scm>
+    <url>https://github.com/chatlychat/chatly</url>
+    <connection>scm:git:https://github.com/chatlychat/chatly.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/chatlychat/chatly.git</developerConnection>
+    <tag>HEAD</tag>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub Issues</system>
+    <url>https://github.com/chatlychat/chatly/issues</url>
+  </issueManagement>
+
+  <properties>
+    <!--
+      Java 17, not 21 or 27.
+
+      17 is the oldest LTS that has everything this SDK needs: `java.net.http`
+      (11), records, sealed-ish switch expressions, and pattern matching for
+      instanceof (16). Targeting 21 would exclude every customer still on a
+      17 runtime for the sake of no feature we use. The toolchain that BUILDS
+      it can be anything newer; `maven.compiler.release` pins the bytecode
+      and the visible API surface, which `-source`/`-target` alone do not.
+      With those two, a 27 javac happily links against 27-only JDK methods and
+      produces a jar that passes every local test and throws
+      NoSuchMethodError on a customer's 17 JVM.
+    -->
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+
+  <dependencies>
+    <!--
+      ZERO runtime dependencies, and this block is the proof: every entry below
+      is `test` scope. A customer who adds this library inherits one jar.
+
+      That is a deliberate product constraint, not an accident of a young
+      library: adding Jackson here would force a Jackson VERSION on every
+      consumer, and a version conflict between an SDK and the application that
+      embeds it is the single most common way a JVM integration fails to start.
+      The cost is `src/main/java/com/chatlychat/chatly/Json.java`, which we own
+      and test; see its header.
+    -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration>
+          <!--
+            The webhook and loopback-server tests bind to 127.0.0.1 on an
+            ephemeral port. Nothing here reaches the public network, and
+            nothing needs an API key: `mvn test` is runnable on an air-gapped
+            machine once the JUnit jars are in the local repository.
+          -->
+          <trimStackTrace>false</trimStackTrace>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Implementation-Title>${project.name}</Implementation-Title>
+              <Implementation-Version>${project.version}</Implementation-Version>
+              <Automatic-Module-Name>com.chatlychat.chatly</Automatic-Module-Name>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals><goal>jar-no-fork</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.6.3</version>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals><goal>jar</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <source>17</source>
+          <doclint>none</doclint>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!--
+      Maven Central requires a source jar, a javadoc jar and a GPG signature on
+      every artifact. Signing lives in a profile so that an ordinary `mvn test`
+      or `mvn install` does not demand a signing key; release with
+      `mvn -Prelease deploy`.
+    -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.4</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>
