@@ -12,10 +12,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -37,14 +39,27 @@ import org.junit.jupiter.api.Test;
  * match — so a literal segment differing by one character ({@code /v1/tickets/queue} for
  * {@code /v1/tickets/queues}) fails rather than being quietly rewritten.
  *
- * <h2>Everything here is one test, on purpose</h2>
+ * <h2>The lock is written and read by ONE test, on purpose</h2>
  *
- * The lock is both written and read by this method. Splitting the write and the read into two
- * {@code @Test}s would be worse than it looks: JUnit's default method order is deterministic but
- * unspecified, so the reader might run first and fail on a missing file — and if the writer were
- * forced to run first, a "the committed lock is up to date" reader would be comparing the
- * just-written file against itself and would pass unconditionally. That is a test that looks like
- * evidence and is not. One method, explicit sequence.
+ * The lock is both written and read by {@link #theLockIsGeneratedByExecutionAndMatchesTheManifest}.
+ * Splitting the write and the read into two {@code @Test}s would be worse than it looks: JUnit's
+ * default method order is deterministic but unspecified, so the reader might run first and fail on
+ * a missing file — and if the writer were forced to run first, a "the committed lock is up to date"
+ * reader would be comparing the just-written file against itself and would pass unconditionally.
+ * That is a test that looks like evidence and is not. One method, explicit sequence.
+ *
+ * <p>The other two tests here touch no file. One asserts the {@link ResponseShape} column is not
+ * vacuous; the other drives the ten auto-paginators with the <em>wrong</em> body and requires each
+ * to throw.
+ *
+ * <h2>Where the response shapes come from</h2>
+ *
+ * Each entry also carries the top-level shape of the route's successful response, and that column
+ * is <strong>hand-written in {@link ResponseShape}</strong> — read its javadoc before changing a
+ * value. It is not derived from the manifest, because a fixture derived from the manifest agrees
+ * with the manifest even when the manifest is wrong, which is a thing that has happened and cost
+ * two other SDKs a production decode error. The gate diffs eight SDKs' independently written
+ * columns against {@code surface.json}.
  *
  * <h2>It does not soft-skip</h2>
  *
@@ -73,14 +88,22 @@ class SurfaceLockTest {
   /** Below this, the manifest has stopped parsing rather than legitimately shrunk. */
   private static final int MANIFEST_FLOOR = 50;
 
-  /** One row of the lock, and of the manifest. */
-  private record Row(String ns, String name, String http, String path) {
+  /**
+   * One row of the lock, and of the manifest.
+   *
+   * @param shape from {@link ResponseShape} when this row describes what the client did, and from
+   *     {@code surface.json} when it describes what the manifest declares. Those are two
+   *     independently written facts, and {@link #describe()} puts the shape inside the comparable
+   *     value so a disagreement between them fails the set diff below rather than needing its own
+   *     check that somebody could forget to write.
+   */
+  private record Row(String ns, String name, String http, String path, String shape) {
     String id() {
       return ns + "." + name;
     }
 
     String describe() {
-      return http + " " + path + "  (" + id() + ")";
+      return http + " " + path + " \u2192 " + shape + "  (" + id() + ")";
     }
   }
 
@@ -122,7 +145,32 @@ class SurfaceLockTest {
               entry.id() + " issued " + issued.method() + ", manifest declares " + expected.http());
           continue;
         }
-        observed.add(new Row(entry.ns(), entry.name(), issued.method(), normalised));
+        /*
+         * The value the method handed back really has the shape this SDK
+         * declared for the route.
+         *
+         * This is what catches a method that wraps or unwraps even when the
+         * request it issued was perfect: a `list` that returned `page.items()`
+         * from a page route, or one that reached for `items` on a bare-array
+         * route, disagrees here. `SurfaceCalls.execute` fed it the body of its
+         * OWN declared shape, so the declaration is load-bearing in both
+         * directions.
+         */
+        ResponseShape shape = entry.shape();
+        String actual = ResponseShape.actual(issued.value());
+        if (!shape.wire().equals(actual)) {
+          problems.add(
+              entry.id()
+                  + " is declared "
+                  + shape.wire()
+                  + " but handed back "
+                  + actual
+                  + " ("
+                  + (issued.value() == null ? "null" : issued.value().getClass().getName())
+                  + ")");
+          continue;
+        }
+        observed.add(new Row(entry.ns(), entry.name(), issued.method(), normalised, shape.wire()));
       } catch (AssertionError e) {
         problems.add(e.getMessage());
       }
@@ -198,6 +246,143 @@ class SurfaceLockTest {
     }
   }
 
+  /**
+   * The shape column is not vacuous: every route has one, and the distribution is the real one.
+   *
+   * <p>A column that said {@code object} 55 times would satisfy every other assertion in this file
+   * — each method would be fed {@code {"id":"x_1"}}, each would hand back a {@code Map}, and the
+   * green line would mean nothing at all. That failure mode is not hypothetical in this repository:
+   * twice now the number in a gate's green line has been the number of rows it managed to parse
+   * rather than the number that exist. So the distribution is pinned.
+   *
+   * <p>14 / 10 / 30 / 1, from reading all 55 {@code @ZodResponse} schemas in
+   * {@code apps/api/src/modules/} on 2026-10-12. If the surface grows these change — but all four
+   * values must stay represented, and {@code empty} must stay at exactly one until a second real
+   * 204 ships, because {@code empty} is the only value that proves the fake can withhold a body.
+   */
+  @Test
+  @DisplayName("every route has a hand-declared shape, and the four values are really distributed")
+  void theDeclaredShapeColumnCoversTheSurfaceAndIsNotVacuous() {
+    TreeSet<String> surfaceIds = new TreeSet<>();
+    for (SurfaceCalls.Entry entry : SurfaceCalls.all()) {
+      surfaceIds.add(entry.id());
+    }
+    assertEquals(
+        surfaceIds,
+        new TreeSet<>(ResponseShape.declared().keySet()),
+        "ResponseShape must declare a shape for exactly the routes this SDK implements — a route"
+            + " with no declaration, or a declaration for a route that no longer exists, is a"
+            + " column drifting away from the code it is supposed to describe");
+
+    EnumMap<ResponseShape, Integer> counts = new EnumMap<>(ResponseShape.class);
+    for (ResponseShape shape : ResponseShape.values()) {
+      counts.put(shape, 0);
+    }
+    for (ResponseShape shape : ResponseShape.declared().values()) {
+      counts.merge(shape, 1, Integer::sum);
+    }
+
+    EnumMap<ResponseShape, Integer> expected = new EnumMap<>(ResponseShape.class);
+    expected.put(ResponseShape.ARRAY, 14);
+    expected.put(ResponseShape.PAGE, 10);
+    expected.put(ResponseShape.OBJECT, 30);
+    expected.put(ResponseShape.EMPTY, 1);
+
+    assertEquals(
+        expected,
+        counts,
+        "the declared shape distribution changed. If the surface really changed, update this"
+            + " expectation and the manifest in the same commit; if it did not, the column has"
+            + " been flattened — which would leave every other assertion here passing for"
+            + " nothing.");
+
+    // And the four bodies really are four different things. A fixture set where
+    // `empty` quietly became `{}` would make the 204 case indistinguishable
+    // from an object, which is the one distinction this value exists to make.
+    assertEquals(204, ResponseShape.EMPTY.status(), "the empty shape must be a real 204");
+    assertEquals(null, ResponseShape.EMPTY.body(), "a 204 carries no body, not an empty one");
+    for (ResponseShape shape : ResponseShape.values()) {
+      if (shape != ResponseShape.EMPTY) {
+        assertEquals(200, shape.status(), shape.wire() + " is answered with a 200");
+        assertTrue(shape.body() != null && !shape.body().isEmpty(), shape.wire() + " needs a body");
+      }
+    }
+    assertEquals(
+        ResponseShape.values().length,
+        new TreeSet<>(
+                List.of(
+                    String.valueOf(ResponseShape.ARRAY.body()),
+                    String.valueOf(ResponseShape.PAGE.body()),
+                    String.valueOf(ResponseShape.OBJECT.body()),
+                    String.valueOf(ResponseShape.EMPTY.body())))
+            .size(),
+        "the four fixture bodies must be four distinct things");
+  }
+
+  /**
+   * The negative direction: every auto-paginator fed a bare array must fail loudly.
+   *
+   * <p>The test above proves each method copes with the shape this SDK says the route sends. It
+   * cannot prove the declaration <em>matters</em> — a decoder that ignored the body entirely would
+   * pass it, and so would one that turned anything unrecognised into an empty page. That second one
+   * is not a straw man: the Rust client's derived {@code Page} deserializer read a bare array as an
+   * <em>empty page</em> and returned it with a 200, which is a wrong answer rather than a missing
+   * error, and a caller walking it would conclude the list was empty.
+   *
+   * <p>So this feeds all ten walkers {@code [{"id":"x_1"}]} where they expect
+   * {@code {items, nextCursor}} and requires each to throw. {@link Page#fromDecoded} is the place
+   * that must refuse it.
+   */
+  @Test
+  @DisplayName("every auto-paginator rejects a bare array where a page envelope is expected")
+  void everyAutoPaginatorRejectsABareArray() {
+    Map<String, Function<Chatly, Pager<Map<String, Object>>>> walkers = SurfaceCalls.pagers();
+
+    /*
+     * The set of walkers is exactly the set of routes THIS SDK declares `page`,
+     * so the test cannot quietly shrink to nothing while still reporting a
+     * pass. Derived from ResponseShape rather than from the manifest's `paged`
+     * flag on purpose — ListShapeTest already checks the same map against the
+     * manifest, and two authorities pointed at one map is the point.
+     */
+    TreeSet<String> pageRoutes = new TreeSet<>();
+    ResponseShape.declared()
+        .forEach(
+            (id, shape) -> {
+              if (shape == ResponseShape.PAGE) {
+                pageRoutes.add(id);
+              }
+            });
+    assertEquals(
+        pageRoutes,
+        new TreeSet<>(walkers.keySet()),
+        "one walker per `page` route and nothing else");
+    assertEquals(10, pageRoutes.size(), "ten page routes — the floor that stops this test shrinking");
+
+    List<String> accepted = new ArrayList<>();
+    for (Map.Entry<String, Function<Chatly, Pager<Map<String, Object>>>> walker :
+        walkers.entrySet()) {
+      FakeSender sender = new FakeSender().then(200, ResponseShape.ARRAY.body());
+      try {
+        // hasNext() is what triggers the first fetch; a Pager is lazy, so
+        // merely building one proves nothing.
+        walker.getValue().apply(sender.client()).iterator().hasNext();
+        accepted.add(walker.getKey());
+      } catch (RuntimeException expected) {
+        // The required outcome. A bare array is not a page.
+      }
+    }
+
+    if (!accepted.isEmpty()) {
+      fail(
+          accepted.size()
+              + " paginator(s) accepted a bare array as a page envelope instead of throwing:\n  "
+              + String.join("\n  ", accepted)
+              + "\nThat is the Rust client's bug: a non-page body read as an empty page is a wrong"
+              + " answer with a 200, not a missing error.");
+    }
+  }
+
   // --------------------------------------------------------------- helpers
 
   @SuppressWarnings("unchecked") // the manifest's shape is checked as it is read
@@ -216,7 +401,8 @@ class SurfaceLockTest {
               (String) e.get("ns"),
               (String) e.get("name"),
               (String) e.get("http"),
-              (String) e.get("path")));
+              (String) e.get("path"),
+              (String) e.get("shape")));
     }
     // A floor, not an equality. The manifest is meant to grow; what must never
     // happen is a run that audits three entries because the file stopped
@@ -251,6 +437,8 @@ class SurfaceLockTest {
           .append(Json.write(r.http()))
           .append(", \"path\": ")
           .append(Json.write(r.path()))
+          .append(", \"shape\": ")
+          .append(Json.write(r.shape()))
           .append(" }");
       if (i < rows.size() - 1) {
         sb.append(',');

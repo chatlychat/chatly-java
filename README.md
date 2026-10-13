@@ -666,6 +666,25 @@ recording the `METHOD /path` each one actually issued, with interpolated segment
 the manifest's placeholder form. It then asserts that set equals
 `packages/sdk-spec/surface.json` — the manifest shared by every Chatly SDK.
 
+Each entry also carries a `shape`: the top-level shape of the route's successful response, one of
+`array` (14 routes), `page` (10), `object` (30) and `empty` (1 — `macros.delete` is the only real
+204 here). That column is **hand-written** in
+[`ResponseShape`](./src/test/java/com/chatlychat/chatly/ResponseShape.java), from the handlers'
+`@ZodResponse` schemas, and deliberately _not_ read from the manifest: a fixture derived from the
+manifest agrees with the manifest even when the manifest is wrong, and the manifest has been wrong.
+`macros.list` carried `paged: true` for a day while `GET /v1/macros` is `@PaginationExempt` and
+answers a bare array; two sibling SDKs built paginators over it and raised a decode error against
+the real API with green suites, because their fake transports answered _every_ route with
+`{items, nextCursor}`. One of them read the bare array as an _empty page_ and returned it with a
+200, which is a wrong answer rather than a missing error.
+
+So the fake here answers each route with a body of **its own declared shape**, the suite asserts the
+value each method hands back really has that shape — which is what catches a method that wraps or
+unwraps even when the request it issued was perfect — and a separate test feeds all ten
+auto-paginators a bare array and requires each to throw. The gate then diffs eight SDKs'
+independently written columns against the manifest, so a wrong row would need eight authors to
+misread the same handler.
+
 The lock is committed, and regenerating it is part of the test run rather than a script someone
 forgets. It exists because the cross-language parity gate used to match path strings in SDK _source
 text_, which credited this SDK with 55/55 while two of those methods did not exist: a Javadoc
@@ -687,7 +706,7 @@ javac -d target/verify -cp target/classes \
 java -cp target/classes:target/verify com.chatlychat.chatly.Verify
 ```
 
-49 assertions, exit code 0 or 1. It is a supplement, not a replacement — `mvn test` runs nearly
+49 assertions, exit code 0 or 1. It is a supplement, not a replacement — `mvn test` runs more than
 three times as many — and both read the same pinned vectors.
 
 ### Pinned cross-language vectors

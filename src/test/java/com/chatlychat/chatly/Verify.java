@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The same nine contract assertions as the JUnit suite, with no test framework at all.
+ * The same contract assertions as the JUnit suite, with no test framework at all.
  *
  * <p><strong>Why this exists.</strong> {@code mvn test} needs JUnit from Maven Central the first
  * time it runs. On a machine with no network and a cold {@code ~/.m2}, that is not a slow build, it
@@ -28,8 +28,10 @@ import java.util.Map;
  * java -cp target/classes:target/verify com.chatlychat.chatly.Verify
  * }</pre>
  *
- * <p>It is a <em>supplement</em>, not a replacement: {@code mvn test} runs 142 assertions across
- * seven classes, this runs the nine the contract names plus a handful that guard them. If the two
+ * <p>It is a <em>supplement</em>, not a replacement: {@code mvn test} runs 155 assertions across
+ * ten classes, this runs items 1-9 of the contract's ten plus a handful that guard them. Item 10,
+ * the response-shape lock, needs the 55-route surface table and stays in {@code SurfaceLockTest}.
+ * If the two
  * ever disagree, the JUnit suite is the one to trust — it is bigger. Both read the same pinned
  * vectors.
  *

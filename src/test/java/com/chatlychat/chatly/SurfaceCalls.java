@@ -1,9 +1,10 @@
 package com.chatlychat.chatly;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * The 55 surface methods, each paired with a throwaway invocation.
@@ -29,13 +30,6 @@ import java.util.function.Consumer;
  */
 final class SurfaceCalls {
 
-  /** A page envelope, an object, and an array — enough to satisfy any method's decoder. */
-  static final String PAGE = "{\"items\":[],\"nextCursor\":null}";
-
-  static final String OBJECT = "{\"id\":\"x_1\"}";
-
-  static final String ARRAY = "[{\"id\":\"x_1\"}]";
-
   /**
    * One surface method.
    *
@@ -45,8 +39,8 @@ final class SurfaceCalls {
    * @param pathTemplate the manifest's path, placeholders and all: {@code /v1/contacts/{id}/tags}
    * @param concretePath the path this invocation actually produces, with the arguments below
    *     substituted — the thing {@link SurfaceTest} compares against
-   * @param response a body the method's decoder will accept
-   * @param invoke calls the method with throwaway arguments
+   * @param invoke calls the method with throwaway arguments and returns whatever it handed back, so
+   *     the caller can check the shape of the <em>result</em> and not only of the request
    */
   record Entry(
       String ns,
@@ -54,12 +48,24 @@ final class SurfaceCalls {
       String http,
       String pathTemplate,
       String concretePath,
-      String response,
-      Consumer<Chatly> invoke) {
+      Function<Chatly, Object> invoke) {
 
     /** {@code ns.name}, for an error message. */
     String id() {
       return ns + "." + name;
+    }
+
+    /**
+     * The response shape this route answers with, from {@link ResponseShape#declared()}.
+     *
+     * <p>Not a field on this record, and not a body string either. It used to be a body string per
+     * row, which meant the body and the route's real shape were two facts kept in step by hand; now
+     * there is one hand-written column, {@link ResponseShape} owns it, and the fixture is derived
+     * from <em>that</em> rather than from {@code surface.json}. A row with no declaration fails
+     * rather than defaulting.
+     */
+    ResponseShape shape() {
+      return ResponseShape.of(id());
     }
   }
 
@@ -90,177 +96,196 @@ final class SurfaceCalls {
     List<Entry> e = new ArrayList<>();
 
     e.add(new Entry("root", "whoami", "GET", "/v1/api-keys/whoami", "/v1/api-keys/whoami",
-        OBJECT, c -> c.whoami()));
+         c -> c.whoami()));
 
     // ------------------------------------------------------------- contacts
     e.add(new Entry("contacts", "list", "GET", "/v1/contacts", "/v1/contacts",
-        PAGE, c -> c.contacts().list()));
+         c -> c.contacts().list()));
     e.add(new Entry("contacts", "get", "GET", "/v1/contacts/{id}", "/v1/contacts/" + CONTACT,
-        OBJECT, c -> c.contacts().get(CONTACT)));
+         c -> c.contacts().get(CONTACT)));
     e.add(new Entry("contacts", "upsert", "POST", "/v1/contacts", "/v1/contacts",
-        OBJECT, c -> c.contacts().upsert(Map.of("externalId", "u-1"))));
+         c -> c.contacts().upsert(Map.of("externalId", "u-1"))));
     e.add(new Entry("contacts", "bulk_upsert", "POST", "/v1/contacts/bulk", "/v1/contacts/bulk",
-        OBJECT, c -> c.contacts().bulkUpsert(List.of(Map.of("externalId", "u-1")))));
+         c -> c.contacts().bulkUpsert(List.of(Map.of("externalId", "u-1")))));
     e.add(new Entry("contacts", "merge", "POST", "/v1/contacts/{id}/merge",
-        "/v1/contacts/" + CONTACT + "/merge", OBJECT, c -> c.contacts().merge(CONTACT, "c_2")));
+        "/v1/contacts/" + CONTACT + "/merge",  c -> c.contacts().merge(CONTACT, "c_2")));
     e.add(new Entry("contacts", "add_tags", "POST", "/v1/contacts/{id}/tags",
-        "/v1/contacts/" + CONTACT + "/tags", OBJECT, c -> c.contacts().addTags(CONTACT, "vip")));
+        "/v1/contacts/" + CONTACT + "/tags",  c -> c.contacts().addTags(CONTACT, "vip")));
     e.add(new Entry("contacts", "remove_tag", "DELETE", "/v1/contacts/{id}/tags/{tag}",
-        "/v1/contacts/" + CONTACT + "/tags/vip", OBJECT,
+        "/v1/contacts/" + CONTACT + "/tags/vip",
         c -> c.contacts().removeTag(CONTACT, "vip")));
     e.add(new Entry("contacts", "unsubscribe", "POST", "/v1/contacts/{id}/unsubscribe",
-        "/v1/contacts/" + CONTACT + "/unsubscribe", OBJECT,
+        "/v1/contacts/" + CONTACT + "/unsubscribe",
         c -> c.contacts().unsubscribe(CONTACT, true)));
     e.add(new Entry("contacts", "journey", "GET", "/v1/contacts/{id}/journey",
-        "/v1/contacts/" + CONTACT + "/journey", PAGE, c -> c.contacts().journey(CONTACT)));
+        "/v1/contacts/" + CONTACT + "/journey",  c -> c.contacts().journey(CONTACT)));
 
     // -------------------------------------------------------- conversations
     e.add(new Entry("conversations", "list", "GET", "/v1/conversations", "/v1/conversations",
-        PAGE, c -> c.conversations().list()));
+         c -> c.conversations().list()));
     e.add(new Entry("conversations", "get", "GET", "/v1/conversations/{id}",
-        "/v1/conversations/" + CONVERSATION, OBJECT, c -> c.conversations().get(CONVERSATION)));
+        "/v1/conversations/" + CONVERSATION,  c -> c.conversations().get(CONVERSATION)));
     e.add(new Entry("conversations", "messages", "GET", "/v1/conversations/{id}/messages",
-        "/v1/conversations/" + CONVERSATION + "/messages", PAGE,
+        "/v1/conversations/" + CONVERSATION + "/messages",
         c -> c.conversations().messages(CONVERSATION)));
     e.add(new Entry("conversations", "send", "POST", "/v1/conversations/{id}/messages",
-        "/v1/conversations/" + CONVERSATION + "/messages", OBJECT,
+        "/v1/conversations/" + CONVERSATION + "/messages",
         c -> c.conversations().send(CONVERSATION, "hello")));
     e.add(new Entry("conversations", "unattended", "GET", "/v1/conversations/unattended",
-        "/v1/conversations/unattended", PAGE, c -> c.conversations().unattended()));
+        "/v1/conversations/unattended",  c -> c.conversations().unattended()));
     e.add(new Entry("conversations", "agent_handling", "GET",
         "/v1/conversations/{id}/agent-handling",
-        "/v1/conversations/" + CONVERSATION + "/agent-handling", OBJECT,
+        "/v1/conversations/" + CONVERSATION + "/agent-handling",
         c -> c.conversations().agentHandling(CONVERSATION)));
     e.add(new Entry("conversations", "set_agent_handling", "PUT",
         "/v1/conversations/{id}/agent-handling",
-        "/v1/conversations/" + CONVERSATION + "/agent-handling", OBJECT,
+        "/v1/conversations/" + CONVERSATION + "/agent-handling",
         c -> c.conversations().setAgentHandling(CONVERSATION, "agent")));
     e.add(new Entry("conversations", "generated_replies", "GET",
         "/v1/conversations/{id}/generated-replies",
-        "/v1/conversations/" + CONVERSATION + "/generated-replies", ARRAY,
+        "/v1/conversations/" + CONVERSATION + "/generated-replies",
         c -> c.conversations().generatedReplies(CONVERSATION)));
     e.add(new Entry("conversations", "generate_reply", "POST",
         "/v1/conversations/{id}/generated-replies",
-        "/v1/conversations/" + CONVERSATION + "/generated-replies", OBJECT,
+        "/v1/conversations/" + CONVERSATION + "/generated-replies",
         c -> c.conversations().generateReply(CONVERSATION, "draft")));
     e.add(new Entry("conversations", "scheduled_messages", "GET",
         "/v1/conversations/{id}/scheduled-messages",
-        "/v1/conversations/" + CONVERSATION + "/scheduled-messages", ARRAY,
+        "/v1/conversations/" + CONVERSATION + "/scheduled-messages",
         c -> c.conversations().scheduledMessages(CONVERSATION)));
     e.add(new Entry("conversations", "schedule_message", "POST",
         "/v1/conversations/{id}/scheduled-messages",
-        "/v1/conversations/" + CONVERSATION + "/scheduled-messages", OBJECT,
+        "/v1/conversations/" + CONVERSATION + "/scheduled-messages",
         c -> c.conversations().scheduleMessage(CONVERSATION, "later", "2026-10-13T09:00:00Z")));
     e.add(new Entry("conversations", "cancel_scheduled", "DELETE",
         "/v1/conversations/scheduled-messages/{scheduled_id}",
-        "/v1/conversations/scheduled-messages/sm_1", OBJECT,
+        "/v1/conversations/scheduled-messages/sm_1",
         c -> c.conversations().cancelScheduled("sm_1")));
 
     // -------------------------------------------------------------- tickets
     e.add(new Entry("tickets", "list", "GET", "/v1/tickets", "/v1/tickets",
-        PAGE, c -> c.tickets().list()));
+         c -> c.tickets().list()));
     e.add(new Entry("tickets", "comments", "GET", "/v1/tickets/{id}/comments",
-        "/v1/tickets/" + TICKET + "/comments", ARRAY, c -> c.tickets().comments(TICKET)));
+        "/v1/tickets/" + TICKET + "/comments",  c -> c.tickets().comments(TICKET)));
     e.add(new Entry("tickets", "for_conversation", "GET",
         "/v1/tickets/for-conversation/{conversation_id}",
-        "/v1/tickets/for-conversation/" + CONVERSATION, ARRAY,
+        "/v1/tickets/for-conversation/" + CONVERSATION,
         c -> c.tickets().forConversation(CONVERSATION)));
     e.add(new Entry("tickets", "queues", "GET", "/v1/tickets/queues", "/v1/tickets/queues",
-        ARRAY, c -> c.tickets().queues()));
+         c -> c.tickets().queues()));
     e.add(new Entry("tickets", "merge", "POST", "/v1/tickets/{id}/merge",
-        "/v1/tickets/" + TICKET + "/merge", OBJECT, c -> c.tickets().merge(TICKET, "t_2")));
+        "/v1/tickets/" + TICKET + "/merge",  c -> c.tickets().merge(TICKET, "t_2")));
     e.add(new Entry("tickets", "split", "POST", "/v1/tickets/{id}/split",
-        "/v1/tickets/" + TICKET + "/split", OBJECT, c -> c.tickets().split(TICKET, "a title")));
+        "/v1/tickets/" + TICKET + "/split",  c -> c.tickets().split(TICKET, "a title")));
     e.add(new Entry("tickets", "bulk", "POST", "/v1/tickets/bulk", "/v1/tickets/bulk",
-        OBJECT, c -> c.tickets().bulk(List.of(TICKET), "close")));
+         c -> c.tickets().bulk(List.of(TICKET), "close")));
 
     // --------------------------------------------------------------- macros
     e.add(new Entry("macros", "list", "GET", "/v1/macros", "/v1/macros",
-        ARRAY, c -> c.macros().list()));
-    e.add(new Entry("macros", "create", "POST", "/v1/macros", "/v1/macros", OBJECT,
+         c -> c.macros().list()));
+    e.add(new Entry("macros", "create", "POST", "/v1/macros", "/v1/macros",
         c -> c.macros().create(Map.of("name", "n", "scope", "workspace", "body", "b"))));
-    e.add(new Entry("macros", "update", "PATCH", "/v1/macros/{id}", "/v1/macros/m_1", OBJECT,
+    e.add(new Entry("macros", "update", "PATCH", "/v1/macros/{id}", "/v1/macros/m_1",
         c -> c.macros().update("m_1", Map.of("name", "n2"))));
-    e.add(new Entry("macros", "delete", "DELETE", "/v1/macros/{id}", "/v1/macros/m_1", null,
-        c -> c.macros().delete("m_1")));
+    e.add(new Entry("macros", "delete", "DELETE", "/v1/macros/{id}", "/v1/macros/m_1",
+        c -> {
+          // The one void method on the surface. `null` is what a 204 decodes to,
+          // and ResponseShape.actual maps it to `empty` — so the shape assertion
+          // still has something to look at rather than quietly skipping it.
+          c.macros().delete("m_1");
+          return null;
+        }));
 
     // ------------------------------------------------------------------- kb
     e.add(new Entry("kb", "articles", "GET", "/v1/kb/articles", "/v1/kb/articles",
-        PAGE, c -> c.kb().articles()));
+         c -> c.kb().articles()));
     e.add(new Entry("kb", "article", "GET", "/v1/kb/articles/{slug}",
-        "/v1/kb/articles/how-to-refund", OBJECT, c -> c.kb().article("how-to-refund")));
+        "/v1/kb/articles/how-to-refund",  c -> c.kb().article("how-to-refund")));
     e.add(new Entry("kb", "collections", "GET", "/v1/kb/collections", "/v1/kb/collections",
-        ARRAY, c -> c.kb().collections()));
+         c -> c.kb().collections()));
 
     // --------------------------------------------------------------- search
     e.add(new Entry("search", "query", "GET", "/v1/search", "/v1/search",
-        PAGE, c -> c.search().query("refund")));
+         c -> c.search().query("refund")));
 
     // --------------------------------------------------------------- events
     e.add(new Entry("events", "track", "POST", "/v1/cdp/events", "/v1/cdp/events",
-        OBJECT, c -> c.events().track(CONTACT, "did.thing")));
+         c -> c.events().track(CONTACT, "did.thing")));
     e.add(new Entry("events", "list", "GET", "/v1/cdp/events", "/v1/cdp/events",
-        PAGE, c -> c.events().list()));
+         c -> c.events().list()));
 
     // ------------------------------------------------------------- webhooks
     e.add(new Entry("webhooks", "deliveries", "GET", "/v1/webhooks/deliveries",
-        "/v1/webhooks/deliveries", PAGE, c -> c.webhooks().deliveries()));
+        "/v1/webhooks/deliveries",  c -> c.webhooks().deliveries()));
     e.add(new Entry("webhooks", "delivery", "GET", "/v1/webhooks/deliveries/{id}",
-        "/v1/webhooks/deliveries/d_1", OBJECT, c -> c.webhooks().delivery("d_1")));
+        "/v1/webhooks/deliveries/d_1",  c -> c.webhooks().delivery("d_1")));
     e.add(new Entry("webhooks", "redeliver", "POST", "/v1/webhooks/deliveries/{id}/redeliver",
-        "/v1/webhooks/deliveries/d_1/redeliver", OBJECT, c -> c.webhooks().redeliver("d_1")));
+        "/v1/webhooks/deliveries/d_1/redeliver",  c -> c.webhooks().redeliver("d_1")));
 
     // -------------------------------------------------------------- reports
     e.add(new Entry("reports", "overview", "GET", "/v1/reports/overview", "/v1/reports/overview",
-        OBJECT, c -> c.reports().overview()));
+         c -> c.reports().overview()));
     e.add(new Entry("reports", "agents", "GET", "/v1/reports/agents", "/v1/reports/agents",
-        ARRAY, c -> c.reports().agents()));
+         c -> c.reports().agents()));
     e.add(new Entry("reports", "conversations_by_day", "GET",
-        "/v1/reports/conversations-by-day", "/v1/reports/conversations-by-day", ARRAY,
+        "/v1/reports/conversations-by-day", "/v1/reports/conversations-by-day",
         c -> c.reports().conversationsByDay()));
     e.add(new Entry("reports", "sla", "GET", "/v1/reports/sla", "/v1/reports/sla",
-        OBJECT, c -> c.reports().sla()));
+         c -> c.reports().sla()));
 
     // ------------------------------------------------------------- channels
     e.add(new Entry("channels", "list", "GET", "/v1/channels", "/v1/channels",
-        ARRAY, c -> c.channels().list()));
+         c -> c.channels().list()));
     e.add(new Entry("channels", "get", "GET", "/v1/channels/{id}", "/v1/channels/ch_1",
-        OBJECT, c -> c.channels().get("ch_1")));
+         c -> c.channels().get("ch_1")));
 
     // -------------------------------------------------------------- billing
     e.add(new Entry("billing", "plans", "GET", "/v1/billing/plans", "/v1/billing/plans",
-        ARRAY, c -> c.billing().plans()));
+         c -> c.billing().plans()));
     e.add(new Entry("billing", "usage", "GET", "/v1/billing/usage", "/v1/billing/usage",
-        OBJECT, c -> c.billing().usage("ai_tokens")));
+         c -> c.billing().usage("ai_tokens")));
 
     // ------------------------------------------------------------ workspace
     e.add(new Entry("workspace", "settings", "GET", "/v1/workspace/settings",
-        "/v1/workspace/settings", OBJECT, c -> c.workspace().settings()));
+        "/v1/workspace/settings",  c -> c.workspace().settings()));
     e.add(new Entry("workspace", "labels", "GET", "/v1/labels", "/v1/labels",
-        ARRAY, c -> c.workspace().labels()));
+         c -> c.workspace().labels()));
     e.add(new Entry("workspace", "inboxes", "GET", "/v1/inboxes", "/v1/inboxes",
-        ARRAY, c -> c.workspace().inboxes()));
+         c -> c.workspace().inboxes()));
     e.add(new Entry("workspace", "team_members", "GET", "/v1/teams/{id}/members",
-        "/v1/teams/tm_1/members", ARRAY, c -> c.workspace().teamMembers("tm_1")));
+        "/v1/teams/tm_1/members",  c -> c.workspace().teamMembers("tm_1")));
     e.add(new Entry("workspace", "agent_skills", "GET", "/v1/agents/skills",
-        "/v1/agents/skills", "{\"skills\":[\"billing\"]}", c -> c.workspace().agentSkills()));
+        "/v1/agents/skills", c -> c.workspace().agentSkills()));
 
     return e;
   }
 
-  /** One request, as the transport saw it, with the base URL and query string stripped. */
-  record Issued(String method, String path) {}
+  /**
+   * One request, as the transport saw it, with the base URL and query string stripped — plus the
+   * value the method handed its caller.
+   *
+   * @param value whatever the method returned, {@code null} for the one {@code void} method. The
+   *     request being right says nothing about the decode, and the decode is where
+   *     {@code macros.list} broke two other SDKs.
+   */
+  record Issued(String method, String path, Object value) {}
 
   /**
    * Execute one entry against a scripted transport and report the single request it made.
+   *
+   * <p>The scripted response is the body of the route's <strong>own declared shape</strong>, not
+   * one body for all 55. A fake that answers every route with {@code {items, nextCursor}} agrees
+   * with any client that expects a page everywhere, which is precisely how the .NET and Rust
+   * clients shipped a paginator over the bare-array {@code /v1/macros} with green suites.
    *
    * @throws AssertionError if the method made zero or more than one request — a surface method is
    *     one route, and a method that quietly makes two is not something a lock can describe
    */
   static Issued execute(Entry entry) {
+    ResponseShape shape = entry.shape();
     FakeSender sender = new FakeSender();
-    sender.then(entry.response() == null ? 204 : 200, entry.response());
-    entry.invoke().accept(sender.clientNoRetries());
+    sender.then(shape.status(), shape.body());
+    Object value = entry.invoke().apply(sender.clientNoRetries());
 
     if (sender.callCount() != 1) {
       throw new AssertionError(
@@ -276,7 +301,35 @@ final class SurfaceCalls {
     if (queryStart >= 0) {
       path = path.substring(0, queryStart);
     }
-    return new Issued(request.method(), path);
+    return new Issued(request.method(), path, value);
+  }
+
+  /**
+   * The auto-paginating form of every route that answers with a page envelope.
+   *
+   * <p>One map, two tests asking opposite questions of it: {@link ListShapeTest} checks that each
+   * walker walks two pages and stops, and {@link SurfaceLockTest} checks that each one
+   * <em>refuses</em> a bare array. Both also assert the key set, from different authorities — the
+   * manifest's {@code paged} flag there, this SDK's own {@link ResponseShape} declaration here — so
+   * a route that fell out of one would still be caught by the other.
+   *
+   * <p>{@code macros.list} is deliberately absent and must stay absent: {@code GET /v1/macros} is
+   * {@code @PaginationExempt} and has no cursor, so a walker over it could only ever return one
+   * page while looking complete.
+   */
+  static Map<String, Function<Chatly, Pager<Map<String, Object>>>> pagers() {
+    Map<String, Function<Chatly, Pager<Map<String, Object>>>> m = new LinkedHashMap<>();
+    m.put("contacts.list", c -> c.contacts().listAuto());
+    m.put("contacts.journey", c -> c.contacts().journeyAuto(CONTACT, Query.of()));
+    m.put("conversations.list", c -> c.conversations().listAuto());
+    m.put("conversations.messages", c -> c.conversations().messagesAuto(CONVERSATION, Query.of()));
+    m.put("conversations.unattended", c -> c.conversations().unattendedAuto());
+    m.put("tickets.list", c -> c.tickets().listAuto());
+    m.put("kb.articles", c -> c.kb().articlesAuto());
+    m.put("search.query", c -> c.search().queryAuto("refund", Query.of()));
+    m.put("events.list", c -> c.events().listAuto());
+    m.put("webhooks.deliveries", c -> c.webhooks().deliveriesAuto());
+    return m;
   }
 
   /**

@@ -68,20 +68,16 @@ class ListShapeTest {
 
   // ------------------------------------------------------- paged routes
 
-  /** The auto-paginating form of each route the manifest marks {@code paged}. */
+  /**
+   * The auto-paginating form of each route the manifest marks {@code paged}.
+   *
+   * <p>{@link SurfaceCalls#pagers()}, not a second copy of it. The same map is walked here for the
+   * positive case (two pages, then stop) and in {@link SurfaceLockTest} for the negative one (a
+   * bare array must throw); two copies would let one of those tests quietly stop covering a route
+   * the other still covered.
+   */
   private static Map<String, Function<Chatly, Pager<Map<String, Object>>>> pagers() {
-    Map<String, Function<Chatly, Pager<Map<String, Object>>>> m = new LinkedHashMap<>();
-    m.put("contacts.list", c -> c.contacts().listAuto());
-    m.put("contacts.journey", c -> c.contacts().journeyAuto("c_1", Query.of()));
-    m.put("conversations.list", c -> c.conversations().listAuto());
-    m.put("conversations.messages", c -> c.conversations().messagesAuto("cv_1", Query.of()));
-    m.put("conversations.unattended", c -> c.conversations().unattendedAuto());
-    m.put("tickets.list", c -> c.tickets().listAuto());
-    m.put("kb.articles", c -> c.kb().articlesAuto());
-    m.put("search.query", c -> c.search().queryAuto("refund", Query.of()));
-    m.put("events.list", c -> c.events().listAuto());
-    m.put("webhooks.deliveries", c -> c.webhooks().deliveriesAuto());
-    return m;
+    return SurfaceCalls.pagers();
   }
 
   @Test

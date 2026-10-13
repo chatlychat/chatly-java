@@ -73,9 +73,9 @@ class SurfaceTest {
 
     for (SurfaceCalls.Entry entry : SurfaceCalls.all()) {
       FakeSender sender = new FakeSender();
-      sender.then(entry.response() == null ? 204 : 200, entry.response());
+      sender.then(entry.shape().status(), entry.shape().body());
       try {
-        entry.invoke().accept(sender.clientNoRetries());
+        entry.invoke().apply(sender.clientNoRetries());
       } catch (RuntimeException e) {
         continue; // reported by the test above
       }
