@@ -37,8 +37,8 @@ import java.util.Objects;
  * {@code Map<String, Object>} for an object, {@code List<Map<String, Object>>} for an array,
  * {@link Page} for a paginated list. Not generated POJOs — see "Why maps and not POJOs" in the
  * README; the short version is that this SDK has zero runtime dependencies and therefore no
- * reflective binder, and hand-written response types for 55 routes would be a second schema to keep
- * in sync with the API.
+ * reflective binder, and hand-written response types for 159 routes would be a second schema to
+ * keep in sync with the API.
  *
  * @see <a href="https://chatlychat.com/docs">chatlychat.com/docs</a>
  */
@@ -78,6 +78,17 @@ public final class Chatly {
   private final ChannelsResource channels;
   private final BillingResource billing;
   private final WorkspaceResource workspace;
+  private final AiResource ai;
+  private final BotsResource bots;
+  private final BotRoutesResource botRoutes;
+  private final BrandsResource brands;
+  private final CanvasStepsResource canvasSteps;
+  private final CustomerCardsResource customerCards;
+  private final CustomerCardEndpointsResource customerCardEndpoints;
+  private final DocsSourcesResource docsSources;
+  private final EmailTemplatesResource emailTemplates;
+  private final KnowledgeGapsResource knowledgeGaps;
+  private final TriggersResource triggers;
 
   private Chatly(Transport transport) {
     this.transport = transport;
@@ -102,6 +113,17 @@ public final class Chatly {
     this.channels = new ChannelsResource(transport);
     this.billing = new BillingResource(transport);
     this.workspace = new WorkspaceResource(transport);
+    this.ai = new AiResource(transport);
+    this.bots = new BotsResource(transport);
+    this.botRoutes = new BotRoutesResource(transport);
+    this.brands = new BrandsResource(transport);
+    this.canvasSteps = new CanvasStepsResource(transport);
+    this.customerCards = new CustomerCardsResource(transport);
+    this.customerCardEndpoints = new CustomerCardEndpointsResource(transport);
+    this.docsSources = new DocsSourcesResource(transport);
+    this.emailTemplates = new EmailTemplatesResource(transport);
+    this.knowledgeGaps = new KnowledgeGapsResource(transport);
+    this.triggers = new TriggersResource(transport);
   }
 
   /** Start building a client. {@link Builder#apiKey} is the only required input. */
@@ -179,6 +201,61 @@ public final class Chatly {
     return workspace;
   }
 
+  /** AI configuration: provider keys, spend, tone of voice, custom tools. */
+  public AiResource ai() {
+    return ai;
+  }
+
+  /** Bots — Chatly personas, and your own push-delivered agents. */
+  public BotsResource bots() {
+    return bots;
+  }
+
+  /** Bot routes — which assistant answers, and under what conditions. */
+  public BotRoutesResource botRoutes() {
+    return botRoutes;
+  }
+
+  /** Brands — sub-tenants inside one workspace. */
+  public BrandsResource brands() {
+    return brands;
+  }
+
+  /** Canvas steps — one turn of an interactive card. */
+  public CanvasStepsResource canvasSteps() {
+    return canvasSteps;
+  }
+
+  /** Customer cards — inbox panels fed from your backend. */
+  public CustomerCardsResource customerCards() {
+    return customerCards;
+  }
+
+  /** Per-url signing secrets for customer cards, with a two-step rotation. */
+  public CustomerCardEndpointsResource customerCardEndpoints() {
+    return customerCardEndpoints;
+  }
+
+  /** Documentation sources synced into the knowledge base. */
+  public DocsSourcesResource docsSources() {
+    return docsSources;
+  }
+
+  /** The five overridable transactional emails. */
+  public EmailTemplatesResource emailTemplates() {
+    return emailTemplates;
+  }
+
+  /** Questions the knowledge base could not answer. */
+  public KnowledgeGapsResource knowledgeGaps() {
+    return knowledgeGaps;
+  }
+
+  /** Triggers — event-driven rules. */
+  public TriggersResource triggers() {
+    return triggers;
+  }
+
   // ------------------------------------------------------------------- root
 
   /**
@@ -198,6 +275,35 @@ public final class Chatly {
     String path = "/v1/api-keys/whoami";
     Object decoded = transport.get(path, Query.of());
     return Resource.object(decoded, path);
+  }
+
+  /**
+   * Describe whoever is calling — a person, or this key. {@code GET /v1/me}
+   *
+   * <p><strong>The liveness check.</strong> It is the one route on the surface with no
+   * {@code @RequirePermission} at all, deliberately: what a key learns here is its OWN workspace id
+   * and its OWN grant list, the two things it presented in order to ask, so a scope requirement
+   * could only withhold a credential's description from the credential itself. A key with no useful
+   * scope still gets a 200, and that answer is true — which is what makes this the right call for
+   * "is my configuration alive?".
+   *
+   * <p>The body is <strong>discriminated on {@code principal}</strong>. For a {@code ck_} key it is
+   * {@code "api_key"} and the rest of the object is the same one {@link #whoami()} returns: there
+   * is no user behind a key. A dashboard session gets {@code "user"} and a person. So branch on
+   * {@code principal} rather than assuming the shape — a backend SDK will only ever see the key
+   * half, but the same route is what the dashboard calls on boot.
+   *
+   * <p>How to choose between this and {@link #whoami()}: they answer the same thing for a key, and
+   * {@code whoami()} requires {@code workspace:read} while this requires nothing. Use this to prove
+   * a key works at all; use {@code whoami()} when you are already inside a scoped flow and want the
+   * answer from the api-keys controller itself.
+   *
+   * <p>It also answers while the workspace is <em>suspended</em> ({@code @AllowWhenSuspended}),
+   * because the screen that tells a user they are suspended cannot render without it.
+   */
+  public Map<String, Object> me() {
+    String path = "/v1/me";
+    return Resource.object(transport.get(path, Query.of()), path);
   }
 
   /** The base URL this client is pointed at. Useful in a log line on startup. */

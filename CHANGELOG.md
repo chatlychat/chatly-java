@@ -3,6 +3,73 @@
 All notable changes to the Chatly Java SDK. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **The whole key-accessible surface: 107 new methods, 162 in total.** Eleven new namespace
+  accessors — `ai()`, `bots()`, `botRoutes()`, `brands()`, `canvasSteps()`, `customerCards()`,
+  `customerCardEndpoints()`, `docsSources()`, `emailTemplates()`, `knowledgeGaps()`, `triggers()` —
+  plus additions to `contacts()` (`cards`, `mood`), `conversations()` (`linked`, `unreadCounts`,
+  `outcomes`, `recordOutcome`, `returnToBot`, `updateBlocks`), `tickets()` (`conversations`,
+  `openCount`, `time`, `statusHistory`, `lineage`), `macros()` (`get`, `actions`, `templates`,
+  `template`), `webhooks()` (`endpoints`, `create`, `events`, `schemaVersions`,
+  `setSchemaVersion`), `reports()` (nine), `channels()` (`adapters`, `create`, `update`,
+  `rotateSecret`), `billing()` (`summary`, `invoices`, `usageDaily`, `usageMonthly`) and
+  `workspace()` (`keyScopes`, `secrets`).
+- **Three more, added when routes that were already key-accessible reached the shared manifest on
+  2026-10-14:** `chatly.me()` (`GET /v1/me`), `chatly.webhooks().delete(endpointId)`
+  (`DELETE /v1/webhooks/{id}`) and `chatly.workspace().mine()` (`GET /v1/workspaces/me`).
+  - `me()` is the liveness check: the only route on this surface with no `@RequirePermission` at
+    all, so a key with no useful scope still gets a `200`. Its body is discriminated on
+    `principal`, and for a `ck_` key it is the same object `whoami()` returns.
+  - `webhooks().delete` closes the asymmetry that let a key add a delivery target and never remove
+    one. The interim workaround — repointing the endpoint at a dead url — leaves the subscription
+    live and the delivery log filling with failures, so undo it where it was followed.
+  - `workspace().mine()` returns exactly one entry for a key, which makes it the cheapest way to
+    confirm which tenant a key points at. Its `role` is the synthetic `restricted`, not a stored
+    membership role.
+- Three new auto-paginators, for the three `page` routes that came with it: `bots().listAuto()`,
+  `bots().deliveriesAuto(botId)` and `triggers().listAuto()`. The manifest's `paged` count is 13
+  now. `billing().invoices()` is deliberately **not** a fourteenth: it is cursor-paginated and
+  spells its envelope `{data, nextCursor}`, so the generic walker — which reads `items` — would
+  report an empty page forever rather than failing.
+- `Resource.strings(…)` behind `channels().adapters()`, the one route on the surface whose bare
+  array holds strings rather than objects (`z.array(z.string())`). The generic array decoder would
+  have handed back a list of `{"value": "web"}` maps: reachable, wrong-looking, and discovered by
+  printing it.
+
+### Changed
+
+- `ChannelsResource`'s documentation said channels were read-only from an API key, "because
+  `channels:write` … no API-key-accessible route grants" it. That was **false**: `POST /v1/channels`,
+  `PATCH /v1/channels/{id}` and `POST /v1/channels/{id}/secret/rotate` all carry `@AllowApiKey()`
+  and all take `channels:write`. The three methods exist now and the claim is gone.
+- `Chatly.request`'s javadoc no longer quotes "140 of 886 routes … the other 85" as current fact. It
+  names the audited figures and points at `scripts/report-api-key-surface.mjs` for the live count,
+  because the open-route count has moved twice since those numbers were written into prose.
+- The surface fixture is four data classes (`SurfaceEntriesCore`, `…Automation`, `…Config`,
+  `…Inbox`) behind the `SurfaceCalls` harness, with the shared sample ids in `SurfaceIds`. 162
+  entries plus the harness is far past CONTRACT §9's 650-line ceiling; every file in this package is
+  under it — the largest is 583 lines.
+- Anti-vacuity floors raised with the surface: the manifest floor from 50 to 155, the declared shape
+  distribution from 14/10/30/1 to **33/13/115/1**, and the paged-route count from 10 to 13. The
+  paged count did not move for the last three routes — none of them pages.
+
+### Notes on three routes that are here and look like they should not be
+
+- `conversations().unreadCounts()` computes per-_user_ badges from `membership.userId`, which for an
+  API key is the key's own id — a principal that has never opened a conversation, so every count is 0. It is implemented because it answers `200`: it returns a confidently wrong answer rather than
+  failing, and a method carrying that warning is better than an integrator finding out alone.
+- `conversations().recordOutcome()`, `outcomes()` and `updateBlocks()` need a second, **undeclared**
+  scope. Past their own `conversations:write` / `messages:write`, the handler re-checks the thread
+  against your read scope, and a key with neither `conversations:read` nor
+  `conversations:read:assigned` is scoped to nobody's conversations — so every id answers 404 and
+  the 404 does not say why. Documented on each method.
+- `DELETE /v1/webhooks/{id}` was deliberately absent for half a day, while it was key-accessible and
+  not yet on `packages/sdk-spec/surface.json` — a lock entry the manifest does not list fails the
+  cross-SDK parity gate. It is on the manifest and is `webhooks().delete` now.
+
 ## 0.1.0 — 2026-10-12
 
 First release. `com.chatlychat:chatly-java:0.1.0`, Java 17+, **zero runtime dependencies**.

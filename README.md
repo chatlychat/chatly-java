@@ -97,9 +97,11 @@ variable is the usual cause and the constructor is the easiest place to see it.
 
 ## The full method surface
 
-55 methods across 13 namespaces. These are the API routes that accept an API key; a route that
-requires a signed-in person is not here, because a method that always returns 403 is worse than no
-method at all.
+162 methods across 24 namespaces — the whole key-accessible surface. These are the API routes that
+accept an API key; a route that requires a signed-in person is not here, because a method that
+always returns 403 is worse than no method at all. Contact block/unblock is the clearest example of
+what is deliberately missing: those routes record _who_ blocked a contact, and a key is not a
+person.
 
 Return types: `Map<String, Object>` for a JSON object, `List<Map<String, Object>>` for a JSON array,
 `Page<Map<String, Object>>` for a cursor page. `*Auto` variants return a `Pager` (see
@@ -110,21 +112,35 @@ Return types: `Map<String, Object>` for a JSON object, `List<Map<String, Object>
 | Method            | HTTP                      |
 | ----------------- | ------------------------- |
 | `chatly.whoami()` | `GET /v1/api-keys/whoami` |
+| `chatly.me()`     | `GET /v1/me`              |
+
+`me()` is **the liveness check**, and the only route on this surface with no `@RequirePermission`
+at all. What a key learns is its own workspace id and its own grant list — the two things it
+presented in order to ask — so a scope requirement could only withhold a credential's description
+from the credential itself, which is how integrators end up discovering their scopes by provoking
+403s. A key with no useful scope still gets a `200`, and that answer is true.
+
+The body is discriminated on `principal`: `"api_key"` gives the same object as `whoami()`, because
+there is no user behind a key. Use `me()` to prove a key works at all, and `whoami()` (which needs
+`workspace:read`) when you are already inside a scoped flow. Both answer while the workspace is
+suspended.
 
 ### `chatly.contacts()`
 
-| Method                                          | HTTP                                  |
-| ----------------------------------------------- | ------------------------------------- |
-| `list()` / `list(Query)` → `Page`               | `GET /v1/contacts`                    |
-| `listAuto()` / `listAuto(Query)` → `Pager`      | `GET /v1/contacts` (walked)           |
-| `get(contactId)`                                | `GET /v1/contacts/{id}`               |
-| `upsert(Map)`                                   | `POST /v1/contacts`                   |
-| `bulkUpsert(List<Map>)` — 1 to 5000 rows        | `POST /v1/contacts/bulk`              |
-| `merge(contactId, mergedId)`                    | `POST /v1/contacts/{id}/merge`        |
-| `addTags(contactId, tag)` — also `addTag(…)`    | `POST /v1/contacts/{id}/tags`         |
-| `removeTag(contactId, tag)`                     | `DELETE /v1/contacts/{id}/tags/{tag}` |
-| `unsubscribe(contactId, boolean)`               | `POST /v1/contacts/{id}/unsubscribe`  |
-| `journey(contactId)` → `Page`, `journeyAuto(…)` | `GET /v1/contacts/{id}/journey`       |
+| Method                                                  | HTTP                                  |
+| ------------------------------------------------------- | ------------------------------------- |
+| `list()` / `list(Query)` → `Page`                       | `GET /v1/contacts`                    |
+| `listAuto()` / `listAuto(Query)` → `Pager`              | `GET /v1/contacts` (walked)           |
+| `get(contactId)`                                        | `GET /v1/contacts/{id}`               |
+| `upsert(Map)`                                           | `POST /v1/contacts`                   |
+| `bulkUpsert(List<Map>)` — 1 to 5000 rows                | `POST /v1/contacts/bulk`              |
+| `merge(contactId, mergedId)`                            | `POST /v1/contacts/{id}/merge`        |
+| `addTags(contactId, tag)` — also `addTag(…)`            | `POST /v1/contacts/{id}/tags`         |
+| `removeTag(contactId, tag)`                             | `DELETE /v1/contacts/{id}/tags/{tag}` |
+| `unsubscribe(contactId, boolean)`                       | `POST /v1/contacts/{id}/unsubscribe`  |
+| `journey(contactId)` → `Page`, `journeyAuto(…)`         | `GET /v1/contacts/{id}/journey`       |
+| `cards(contactId)` / `cards(contactId, conversationId)` | `POST /v1/contacts/{id}/cards`        |
+| `mood(contactId)` / `mood(contactId, days)`             | `GET /v1/contacts/{id}/mood`          |
 
 `upsert` matches on `externalId` (falling back to `email`) and updates the existing row when it
 finds one. Every field is optional server-side, so `upsert(Map.of())` creates an anonymous contact
@@ -134,22 +150,35 @@ that key creates a new contact on every call and the `201` response does not tel
 `addTags` is singular despite the name: the route takes one `tag` per request. The name matches the
 shared cross-language surface list; `addTag` is the same call under a name that reads correctly.
 
+`cards` is a POST that reads: it fans out to the urls configured with `chatly.customerCards()`,
+signs each request, and returns what your own backend answered. Read each entry's `state` — a card
+with no blocks may have timed out rather than having nothing to say.
+
+`mood` returns an empty `buckets` array when there is **not enough signal**, which is not the same
+as neutral.
+
 ### `chatly.conversations()`
 
-| Method                                                       | HTTP                                               |
-| ------------------------------------------------------------ | -------------------------------------------------- |
-| `list()` / `list(Query)` → `Page`, `listAuto(…)`             | `GET /v1/conversations`                            |
-| `get(conversationId)`                                        | `GET /v1/conversations/{id}`                       |
-| `messages(conversationId)` → `Page`, `messagesAuto(…)`       | `GET /v1/conversations/{id}/messages`              |
-| `send(conversationId, String)` / `send(conversationId, Map)` | `POST /v1/conversations/{id}/messages`             |
-| `unattended()` → `Page` (plus `total()`)                     | `GET /v1/conversations/unattended`                 |
-| `agentHandling(conversationId)`                              | `GET /v1/conversations/{id}/agent-handling`        |
-| `setAgentHandling(conversationId, state)`                    | `PUT /v1/conversations/{id}/agent-handling`        |
-| `generatedReplies(conversationId)` → `List`                  | `GET /v1/conversations/{id}/generated-replies`     |
-| `generateReply(conversationId, body)`                        | `POST /v1/conversations/{id}/generated-replies`    |
-| `scheduledMessages(conversationId)` → `List`                 | `GET /v1/conversations/{id}/scheduled-messages`    |
-| `scheduleMessage(conversationId, body, sendAt)`              | `POST /v1/conversations/{id}/scheduled-messages`   |
-| `cancelScheduled(scheduledMessageId)`                        | `DELETE /v1/conversations/scheduled-messages/{id}` |
+| Method                                                       | HTTP                                                 |
+| ------------------------------------------------------------ | ---------------------------------------------------- |
+| `list()` / `list(Query)` → `Page`, `listAuto(…)`             | `GET /v1/conversations`                              |
+| `get(conversationId)`                                        | `GET /v1/conversations/{id}`                         |
+| `messages(conversationId)` → `Page`, `messagesAuto(…)`       | `GET /v1/conversations/{id}/messages`                |
+| `send(conversationId, String)` / `send(conversationId, Map)` | `POST /v1/conversations/{id}/messages`               |
+| `unattended()` → `Page` (plus `total()`)                     | `GET /v1/conversations/unattended`                   |
+| `agentHandling(conversationId)`                              | `GET /v1/conversations/{id}/agent-handling`          |
+| `setAgentHandling(conversationId, state)`                    | `PUT /v1/conversations/{id}/agent-handling`          |
+| `generatedReplies(conversationId)` → `List`                  | `GET /v1/conversations/{id}/generated-replies`       |
+| `generateReply(conversationId, body)`                        | `POST /v1/conversations/{id}/generated-replies`      |
+| `scheduledMessages(conversationId)` → `List`                 | `GET /v1/conversations/{id}/scheduled-messages`      |
+| `scheduleMessage(conversationId, body, sendAt)`              | `POST /v1/conversations/{id}/scheduled-messages`     |
+| `cancelScheduled(scheduledMessageId)`                        | `DELETE /v1/conversations/scheduled-messages/{id}`   |
+| `linked(conversationId)`                                     | `GET /v1/conversations/{id}/linked`                  |
+| `unreadCounts()`                                             | `GET /v1/conversations/unread-counts`                |
+| `outcomes(conversationId)`                                   | `GET /v1/conversations/{id}/outcomes`                |
+| `recordOutcome(conversationId, String\|Map)`                 | `POST /v1/conversations/{id}/outcomes`               |
+| `returnToBot(conversationId, botId)`                         | `POST /v1/conversations/{id}/return-to-bot`          |
+| `updateBlocks(conversationId, messageId, List<Map>)`         | `PATCH /v1/conversations/{id}/messages/{mid}/blocks` |
 
 `send` posts a message immediately. `generateReply` creates a **draft** a human can approve, edit or
 reject — use that one when your agent must not speak to a customer unreviewed.
@@ -160,6 +189,22 @@ the only method here with a precondition beyond scopes.
 
 `sendAt` is an ISO-8601 instant. `java.time.Instant.toString()` produces exactly the accepted form;
 a local date-time with no offset is rejected rather than guessed at.
+
+`unreadCounts()` is **nearly useless from a key** and is here because it answers `200` rather than
+failing: it computes per-_user_ badges from the caller's `membership.userId`, which for a key is the
+key's own id — a principal that has never opened a conversation. For "what is waiting", use
+`unattended()` and read `page.total()`.
+
+`recordOutcome`, `outcomes` and `updateBlocks` each need a _second_, undeclared scope. Beyond their
+own `conversations:write` / `messages:write`, the handler re-checks that the thread is in your read
+scope, and a key with neither `conversations:read` nor `conversations:read:assigned` is scoped to
+nobody's conversations — so every id answers 404 and nothing says why.
+
+`recordOutcome` refuses `valueCents` on anything but `purchased`, rather than ignoring it. And
+nothing in Chatly sums `valueCents`: there is no revenue report. It lands on the CDP event, where
+the contact timeline shows it and a goal can convert on it.
+
+`linked` carries an `items` array with **no cursor** — an object, not a page.
 
 ### `chatly.tickets()`
 
@@ -172,15 +217,32 @@ a local date-time with no offset is rejected rather than guessed at.
 | `merge(ticketId, loserId)`                       | `POST /v1/tickets/{id}/merge`           |
 | `split(ticketId, title)`                         | `POST /v1/tickets/{id}/split`           |
 | `bulk(List<String> ids, action)` / `bulk(Map)`   | `POST /v1/tickets/bulk`                 |
+| `conversations(ticketId)` → `List`               | `GET /v1/tickets/{id}/conversations`    |
+| `openCount(conversationId)`                      | `GET /v1/tickets/open-count/{cid}`      |
+| `time(ticketId)`                                 | `GET /v1/tickets/{id}/time`             |
+| `statusHistory(ticketId)`                        | `GET /v1/tickets/{id}/status-history`   |
+| `lineage(ticketId)`                              | `GET /v1/tickets/{id}/lineage`          |
+
+Every route here is gated on `conversations:read`, not on a tickets scope — there is no
+`tickets:read` permission in this product, and a key scoped for tickets alone gets a 403 from all of
+them.
+
+`time` and `statusHistory` are objects with an `items` array and no cursor. `statusHistory` is
+capped at 500 transitions and `truncated` is what distinguishes a capped timeline from a short one —
+a cycle time computed from a truncated one measures the wrong interval.
 
 ### `chatly.macros()`
 
-| Method                            | HTTP                     |
-| --------------------------------- | ------------------------ |
-| `list()` / `list(Query)` → `List` | `GET /v1/macros`         |
-| `create(Map)`                     | `POST /v1/macros`        |
-| `update(macroId, Map)`            | `PATCH /v1/macros/{id}`  |
-| `delete(macroId)` → `void`        | `DELETE /v1/macros/{id}` |
+| Method                            | HTTP                              |
+| --------------------------------- | --------------------------------- |
+| `list()` / `list(Query)` → `List` | `GET /v1/macros`                  |
+| `create(Map)`                     | `POST /v1/macros`                 |
+| `update(macroId, Map)`            | `PATCH /v1/macros/{id}`           |
+| `delete(macroId)` → `void`        | `DELETE /v1/macros/{id}`          |
+| `get(macroId)`                    | `GET /v1/macros/{id}`             |
+| `actions()`                       | `GET /v1/macros/actions`          |
+| `templates()`                     | `GET /v1/macros/templates`        |
+| `template(slug)`                  | `GET /v1/macros/templates/{slug}` |
 
 `create` requires `name`, `scope`, and either a `body` or a non-empty `actions` array; `teamId` is
 required when `scope` is `"team"`. The server enforces that; the SDK does not duplicate the
@@ -191,6 +253,15 @@ have accepted.
 
 `list` returns a bare array, not a page: a macro picker has to autocomplete over the whole set, so
 the route is pagination-exempt. There is no `listAuto` because there is nothing to walk.
+
+A **personal** macro belonging to a human agent is invisible to a key, in `list` and as a 404 from
+`get`. The `macros` table has FORCE row-level security with a personal-scope clause: a
+`scope = 'personal'` row is visible only when `app.current_user_id` matches its owner, and for a key
+that is the key's own id. So a macro you can see in the dashboard can be absent here.
+
+`templates()` is an object, `{items, total}`, where `total` is just `items.length` over a frozen
+in-process catalog — not a hint at a second page. Installing a template is a `macros:write` route
+that a key cannot reach; copy the body from `template(slug)` into your own `create(Map)`.
 
 ### `chatly.kb()`
 
@@ -244,29 +315,95 @@ Scope the read to one person with `Query.of().add("contactId", id)`.
 | `delivery(deliveryId)`                       | `GET /v1/webhooks/deliveries/{id}`            |
 | `redeliver(deliveryId)`                      | `POST /v1/webhooks/deliveries/{id}/redeliver` |
 
+| `endpoints()` → `List` | `GET /v1/webhooks` |
+| `create(Map)` | `POST /v1/webhooks` |
+| `events()` | `GET /v1/webhooks/events` |
+| `schemaVersions()` | `GET /v1/webhooks/schema-versions` |
+| `setSchemaVersion(endpointId, version)` | `PATCH /v1/webhooks/{id}/schema-version` |
+| `delete(endpointId)` | `DELETE /v1/webhooks/{id}` |
+
 For _verifying_ an incoming delivery, see [Webhook verification](#webhook-verification) — that is a
 static helper and needs no client.
+
+`create(Map)` returns the **only** response that carries `secret`. There is no reveal route and no
+rotation route: losing it means deleting the subscription and making another.
+
+`setSchemaVersion` answers with `missingEventTypes` — the events this subscription asked for that
+the pinned version does not define, by name. A non-empty list means those events stop being
+delivered while the pin stands, so read it rather than treating the 200 as "nothing changed".
+
+`delete` answers 200 with `{"ok": true}`, not a 204. It was missing `@AllowApiKey()` until
+2026-10-14 — a key could add a subscription and never remove one, so a deploy pipeline registering
+an endpoint per environment leaked one into the customer's workspace every run. **If you followed
+the workaround of repointing the endpoint at a dead url, undo it**: that leaves the subscription
+live, every event still attempts delivery, and the delivery log fills with failures. Deleting is the
+only thing that stops the attempts.
 
 ### `chatly.reports()`
 
 Every method takes an optional `Query` for the date range. None is paginated.
 
-| Method                 | HTTP                                   | Shape                        |
-| ---------------------- | -------------------------------------- | ---------------------------- |
-| `overview()`           | `GET /v1/reports/overview`             | object                       |
-| `agents()`             | `GET /v1/reports/agents`               | **array**, one row per agent |
-| `conversationsByDay()` | `GET /v1/reports/conversations-by-day` | **array** of `{day, count}`  |
-| `sla()`                | `GET /v1/reports/sla`                  | object                       |
+| Method                        | HTTP                                        | Shape                        |
+| ----------------------------- | ------------------------------------------- | ---------------------------- |
+| `overview()`                  | `GET /v1/reports/overview`                  | object                       |
+| `agents()`                    | `GET /v1/reports/agents`                    | **array**, one row per agent |
+| `conversationsByDay()`        | `GET /v1/reports/conversations-by-day`      | **array** of `{day, count}`  |
+| `sla()`                       | `GET /v1/reports/sla`                       | object                       |
+| `attribution()`               | `GET /v1/reports/attribution`               | **array**                    |
+| `sources()`                   | `GET /v1/reports/sources`                   | **array**                    |
+| `cohorts()`                   | `GET /v1/reports/cohorts`                   | object                       |
+| `labels()`                    | `GET /v1/reports/labels`                    | object                       |
+| `responseTimes()`             | `GET /v1/reports/response-times`            | object                       |
+| `teams()`                     | `GET /v1/reports/teams`                     | object                       |
+| `themes()` / `themes(date)`   | `GET /v1/reports/themes`                    | object                       |
+| `themeConversations(themeId)` | `GET /v1/reports/themes/{id}/conversations` | object                       |
+| `voice()`                     | `GET /v1/reports/voice`                     | object                       |
+
+Two things are true of the nine extended reports and of none of the first four.
+
+**The window is clamped, not validated.** Every `?days` / `?weeks` is parsed as
+`min(max, max(min, parseInt(raw) || default))`, so `?days=9999` answers a 200 over the maximum
+window and `?days=soon` answers a 200 over the _default_ one. There is no error to catch, and the
+period you asked for is not necessarily the period you got. `cohorts()` echoes the `weeks` it
+actually used — label your axes from that, not from your input. (`chatly.bots().analytics()` is the
+one window that refuses a non-numeric value, and it refuses `from`/`to`/`weeks`/`date` by name.)
+
+**None of them pages**, and each is capped with a remainder bucket rather than a cursor:
+`labels()` keeps the 50 busiest with the rest in `otherLabels`, `attribution()` sums the tail into
+one row, `themes()` caps a batch at 20. There is nothing to page to.
+
+`themes(date)` takes `YYYY-MM-DD` and reaches a `date` _column_: `?date=yesterday` used to arrive at
+Postgres untouched and come back as a 500 about invalid input syntax. It is validated now.
+`themeConversations` answers 200 with an empty list for an unknown or purged theme id, so an empty
+result is not evidence the id was valid. Voice rates are 0-1, not percentages, and
+`recordingStorage.exact: false` means the byte count is part extrapolation.
 
 ### `chatly.channels()`
 
-| Method            | HTTP                    |
-| ----------------- | ----------------------- |
-| `list()` → `List` | `GET /v1/channels`      |
-| `get(channelId)`  | `GET /v1/channels/{id}` |
+| Method                        | HTTP                                   |
+| ----------------------------- | -------------------------------------- |
+| `list()` → `List`             | `GET /v1/channels`                     |
+| `get(channelId)`              | `GET /v1/channels/{id}`                |
+| `adapters()` → `List<String>` | `GET /v1/channels/adapters`            |
+| `create(Map)`                 | `POST /v1/channels`                    |
+| `update(channelId, Map)`      | `PATCH /v1/channels/{id}`              |
+| `rotateSecret(channelId)`     | `POST /v1/channels/{id}/secret/rotate` |
 
-Read-only. Creating or configuring a channel needs `channels:write`, which no key-accessible route
-grants, so there is no `create` or `update` here.
+This section used to say channels were read-only from a key because "`channels:write` … no
+key-accessible route grants" it. That was wrong: the three writes above all carry `@AllowApiKey()`
+and all take `channels:write`.
+
+`adapters()` is the **one route on this surface whose array holds strings** rather than objects
+(`z.array(z.string())`), which is why it returns `List<String>`. Read it before `create`: the type
+enum in the request schema is a superset of what a deployment has an adapter registered for, and a
+type with no adapter is a channel that saves and never delivers.
+
+`type` and `publicId` cannot be changed after creation — `update` does not accept them. `config` is
+**merged**, not replaced.
+
+`rotateSecret` is only meaningful for a custom (`api`) channel; every other type's credential is
+issued by the provider, so it answers **409** for them rather than pretending to rotate something.
+It is a hard cut with no grace window.
 
 Worth reading `originsRestricted` on a web channel: a channel with no origin allow-list accepts an
 embed from **any** site, and an empty list looks identical to an absent one in raw JSON, so the API
@@ -278,6 +415,21 @@ sends that boolean to make the difference visible.
 | ---------------------------------------------- | ----------------------------------- |
 | `plans()` → `List`                             | `GET /v1/billing/plans`             |
 | `usage(eventType)` / `usage(eventType, Query)` | `GET /v1/billing/usage?eventType=…` |
+| `summary()`                                    | `GET /v1/billing`                   |
+| `invoices()` / `invoices(Query)`               | `GET /v1/billing/invoices`          |
+| `usageDaily(eventType[, Query])`               | `GET /v1/billing/usage/daily`       |
+| `usageMonthly([Query])`                        | `GET /v1/billing/usage/monthly`     |
+
+`invoices` is **cursor-paginated and deliberately not a `Page`**: its envelope is
+`{data, nextCursor}` — `data`, not `items` — because it predates the shared pagination helper. So
+there is no `invoicesAuto`, and `Page.fromDecoded` refuses the body rather than reading an empty
+page from it. Walk it with `page.get("nextCursor")` yourself.
+
+`usageDaily` is dense: one entry per UTC day in `[from, to)`, zeros included. `usageMonthly` takes
+no `eventType` — it returns one entry per known meter, always all of them, which is what makes it
+comparable month to month.
+
+Everything here needs `workspace:billing:read`, which is also the scope on `chatly.ai().quota()`.
 
 `eventType` is required and must be a known meter — an unrecognised value is a 400, not an empty
 result. The list is in the dashboard under **Settings → Billing → Usage** and is deliberately not
@@ -293,6 +445,26 @@ the API accepts.
 | `inboxes()` → `List`           | `GET /v1/inboxes`            |
 | `teamMembers(teamId)` → `List` | `GET /v1/teams/{id}/members` |
 | `agentSkills()`                | `GET /v1/agents/skills`      |
+| `keyScopes()` → `List`         | `GET /v1/api-keys/scopes`    |
+| `secrets()`                    | `GET /v1/workspace/secrets`  |
+| `mine()` → `List`              | `GET /v1/workspaces/me`      |
+
+`mine()` is **always exactly one entry for a key**: the workspace it was minted in. The route is
+the cross-workspace one, so for a single-workspace credential it is a list of one — which makes it
+the cheapest way to confirm which tenant a key actually points at before writing to it. The `role`
+on that entry is the synthetic `restricted` minted for every key, not a stored membership role:
+what a key may do is its scope set, and `chatly.me()` answers that. It replies even when the active
+workspace is suspended, because it is how a caller discovers the others.
+
+`keyScopes()` and `whoami()` are the only two routes on the api-keys controller a key may call —
+managing keys with a key is a privilege-escalation shape. Together they turn "why am I getting a
+403?" into a lookup, which is why the scopes route was opened: closed, its own 403 pointed the
+caller at the endpoint it was refusing.
+
+`secrets()` is the only method on this surface needing **two** scopes — `workspace:write` _and_
+`integrations:read` — so a key with one gets a 403 that does not say which is missing. It carries no
+secret, no prefix, no hash, no length. Read `rotatedAtBasis` and `lastUsedBasis` before acting on a
+null timestamp: they say whether null means "never" or "nothing records it".
 
 `agentSkills()` returns an **object**, not an array — `{"skills": ["billing", "german"]}` — the
 distinct skill labels in use across the workspace, which is what skill-based routing matches against.
@@ -314,6 +486,245 @@ chatly.request("GET", "/v1/agents/" + Query.encodePathSegment(userId) + "/skills
 
 Looking for per-agent **metrics**? That is `chatly.reports().agents()`. The two are easy to confuse
 because the paths differ by one prefix.
+
+### `chatly.ai()`
+
+| Method                          | HTTP                                    |
+| ------------------------------- | --------------------------------------- |
+| `providers()`                   | `GET /v1/ai-providers`                  |
+| `addProvider(provider, apiKey)` | `POST /v1/ai-providers`                 |
+| `testProvider(provider)`        | `POST /v1/ai-providers/{provider}/test` |
+| `quota()`                       | `GET /v1/ai/quota`                      |
+| `tone()` → `List`               | `GET /v1/ai/tone`                       |
+| `setTone(List<Map>)` → `List`   | `PUT /v1/ai/tone`                       |
+| `generateTone(styleGuide)`      | `POST /v1/ai/tone/generate`             |
+| `tonePreview()`                 | `GET /v1/ai/tone/preview`               |
+| `tools()` → `List`              | `GET /v1/ai/tools`                      |
+| `createTool(Map)`               | `POST /v1/ai/tools`                     |
+| `updateTool(toolId, Map)`       | `PATCH /v1/ai/tools/{id}`               |
+| `deleteTool(toolId)`            | `DELETE /v1/ai/tools/{id}`              |
+
+`quota()` needs `workspace:billing:read`, not `ai:read` — reading your AI spend is a billing
+question. It meters **subsidised** spend only; bring-your-own-key spend is recorded against a
+different owner and is not bounded by the cap.
+
+`addProvider` validates the key with a real call before storing it, and only an
+authentication-class answer refuses the save. A provider that is down leaves you with a stored key
+and `validation.status: "unverified"` — "nobody has proven this yet", not "this failed". Branch on
+`validation.status`, not on the 201.
+
+`setTone` is a **replace**: rules absent from the list are deleted, and an empty list clears the
+workspace's tone. Read `tone()` first if you mean to add one rule. `generateTone` saves nothing — it
+proposes rules for a human to approve with `setTone`.
+
+`updateTool`: omit `secretHeaders` to keep the stored values. Sending `{}` clears every secret the
+tool had and the next agent call goes out unauthenticated against your endpoint.
+
+### `chatly.bots()`
+
+| Method                                                     | HTTP                                            |
+| ---------------------------------------------------------- | ----------------------------------------------- |
+| `list()` / `list(Query)` → `Page`, `listAuto(…)`           | `GET /v1/bots`                                  |
+| `get(botId)`                                               | `GET /v1/bots/{id}`                             |
+| `create(Map)`                                              | `POST /v1/bots`                                 |
+| `update(botId, Map)`                                       | `PATCH /v1/bots/{id}`                           |
+| `analytics(botId, days)` / `analytics(botId, Query)`       | `GET /v1/bots/{id}/analytics`                   |
+| `deliveries(botId[, Query])` → `Page`, `deliveriesAuto(…)` | `GET /v1/bots/{id}/deliveries`                  |
+| `delivery(botId, deliveryId)`                              | `GET /v1/bots/{id}/deliveries/{did}`            |
+| `redeliver(botId, deliveryId)`                             | `POST /v1/bots/{id}/deliveries/{did}/redeliver` |
+| `testDelivery(botId)`                                      | `POST /v1/bots/{id}/test-delivery`              |
+| `updateExternal(botId, Map)`                               | `PATCH /v1/bots/{id}/external`                  |
+| `rotateExternalSecret(botId)`                              | `POST /v1/bots/{id}/external/rotate-secret`     |
+
+Two kinds of row live here: a **Chatly persona** (a prompt and a model we run) and an **external
+agent** (`type: "external"` — a webhook we POST a signed payload to and wait for). `botType` is the
+discriminator, and the four delivery methods mean nothing for a persona.
+
+`create` takes a union of two bodies and **neither half is strict**, so a field from the wrong one
+is _dropped_: send a persona's `systemPrompt` with `type: "external"` and you get a 201 and no
+prompt. Check the returned row. An external agent's response is the only one that ever carries its
+two credentials, each shown once.
+
+`testDelivery` writes nothing — no ledger row, no conversation, no retry — and is the first call to
+make when building an external agent: it reports what your endpoint answered, the signature header
+we sent, and the exact payload that was signed.
+
+`redeliver` sends the **same bytes, same `eventId`**, so a handler that dedupes on `eventId` will
+discard it. That is correct; a replay is for a delivery you never processed.
+
+`rotateExternalSecret` has no overlap window. Deploy the new secret to your verifier first.
+
+`analytics` percentiles are p50/p95/max and never a mean; a `null` rate belongs to the other bot
+kind and is not zero.
+
+### `chatly.botRoutes()`
+
+| Method                 | HTTP                          |
+| ---------------------- | ----------------------------- |
+| `list()` → `List`      | `GET /v1/bot-routes`          |
+| `create(Map)`          | `POST /v1/bot-routes`         |
+| `update(routeId, Map)` | `PATCH /v1/bot-routes/{id}`   |
+| `delete(routeId)`      | `DELETE /v1/bot-routes/{id}`  |
+| `fields()`             | `GET /v1/bot-routes/fields`   |
+| `resolve(Map)`         | `POST /v1/bot-routes/resolve` |
+
+The table is ordered and first-match-wins; `list()` returns it in evaluation order. A route with no
+conditions matches everything, so one of those near the top is the usual reason a later rule never
+fires.
+
+`resolve` is a read dressed as a POST and writes nothing. It returns the selected route, every
+route with its verdict, and — the useful part — **the event object the conditions were evaluated
+against**. Half of every routing bug is a field path that resolves to nothing.
+
+`fields()` is the authoritative vocabulary: a condition whose `field` is not in it never matches,
+and saving it says nothing.
+
+### `chatly.brands()`
+
+| Method                 | HTTP                     |
+| ---------------------- | ------------------------ |
+| `list()` → `List`      | `GET /v1/brands`         |
+| `create(Map)`          | `POST /v1/brands`        |
+| `update(brandId, Map)` | `PATCH /v1/brands/{id}`  |
+| `delete(brandId)`      | `DELETE /v1/brands/{id}` |
+
+`slug` is required on create and is **not** derived from the name: lowercase alphanumerics and
+hyphens, rejected rather than normalised. `primaryColor` is strict `#RRGGBB`.
+
+`delete` is a soft delete and answers 200 with the id — historical conversations keep their brand,
+so last quarter's report still renders a brand retired yesterday. `list` carries `usage` counts,
+which is what makes a brand safe to retire.
+
+### `chatly.canvasSteps()`
+
+| Method                 | HTTP                                 |
+| ---------------------- | ------------------------------------ |
+| `get(stepId)`          | `GET /v1/canvas-steps/{id}`          |
+| `resolve(stepId, Map)` | `POST /v1/canvas-steps/{id}/resolve` |
+
+The conversation and the message come from the step id, never from your request. A 409 means the
+step was already resolved or expired — exactly one resolve wins. A 404 includes resolving from
+_inside_ the request that answered `{pending: true}`: the row is written after we answer the
+visitor, so return first and resolve afterwards.
+
+### `chatly.customerCards()`
+
+| Method                 | HTTP                                         |
+| ---------------------- | -------------------------------------------- |
+| `list()` → `List`      | `GET /v1/customer-cards`                     |
+| `create(Map)`          | `POST /v1/customer-cards`                    |
+| `update(cardId, Map)`  | `PATCH /v1/customer-cards/{id}`              |
+| `rotateSecret(cardId)` | `POST /v1/customer-cards/{id}/rotate-secret` |
+| `delete(cardId)`       | `DELETE /v1/customer-cards/{id}`             |
+
+`create` is the only response carrying `secret`. The url is checked against the outbound guard at
+write time — our server fetches it — and a reserved header name (`x-chatly-*`, `content-type`,
+`host`, …) is refused: those are how your server knows the request is ours and which card's secret
+signed it.
+
+`update` is strict, and `headers: {}` **clears** every header rather than meaning "unchanged".
+
+`rotateSecret` has no overlap. If you cannot redeploy atomically, use `customerCardEndpoints()`
+instead — its rotation has a window.
+
+### `chatly.customerCardEndpoints()`
+
+| Method                       | HTTP                                                    |
+| ---------------------------- | ------------------------------------------------------- |
+| `list()` → `List`            | `GET /v1/customer-card-endpoints`                       |
+| `create(url)`                | `POST /v1/customer-card-endpoints`                      |
+| `rotateSecret(endpointId)`   | `POST /v1/customer-card-endpoints/{id}/rotate-secret`   |
+| `activateSecret(endpointId)` | `POST /v1/customer-card-endpoints/{id}/activate-secret` |
+| `delete(endpointId)`         | `DELETE /v1/customer-card-endpoints/{id}`               |
+
+One secret signs every card pointing at one url, and `x-chatly-card-id` stops being sent. **That is
+a change at your verifier in both directions** — `delete` reverts to per-card secrets signed by the
+_leading_ card of the group, which is a cutover, not a cleanup.
+
+`rotateSecret` mints the next secret with `active: false`; the current one keeps signing until
+`activateSecret`. Calling it twice replaces the pending secret rather than stacking one.
+
+### `chatly.docsSources()`
+
+| Method                   | HTTP                                 |
+| ------------------------ | ------------------------------------ |
+| `providers()` → `List`   | `GET /v1/docs-sources/providers`     |
+| `list()` → `List`        | `GET /v1/docs-sources`               |
+| `discover(Map)` → `List` | `POST /v1/docs-sources/discover`     |
+| `create(Map)`            | `POST /v1/docs-sources`              |
+| `update(sourceId, Map)`  | `PATCH /v1/docs-sources/{id}`        |
+| `sync(sourceId[, full])` | `POST /v1/docs-sources/{id}/sync`    |
+| `webhook(sourceId)`      | `POST /v1/docs-sources/{id}/webhook` |
+| `delete(sourceId)`       | `DELETE /v1/docs-sources/{id}`       |
+
+`discover` is a POST that answers a **bare array** — one of two on this surface. Pass
+`organizationId` when your token is org-scoped: without it, discovery fails for such a token with an
+error naming a path you never asked about, and an account-wide token returns every space in every
+organisation.
+
+`sync(id, true)` resets the checkpoint and re-reads the whole space. That is the one to use when the
+_reader_ changed rather than the content: an ordinary sync answers with a delta, so after a
+provider-side fix the run finds nothing new and the knowledge base stays as wrong as it was.
+
+`webhook` answers 201 with `subscribed: false` and a reason when the stored token cannot manage
+webhooks, which is the common case. A refusal here is a success — branch on `subscribed`.
+
+`delete` keeps the articles (`kept` counts them). They stop being refreshed, so a disconnected
+source leaves a knowledge base that looks current and is frozen.
+
+### `chatly.emailTemplates()`
+
+| Method                         | HTTP                                |
+| ------------------------------ | ----------------------------------- |
+| `list()` → `List`              | `GET /v1/email-templates`           |
+| `preview(kind, subject, body)` | `POST /v1/email-templates/preview`  |
+| `update(kind, subject, body)`  | `PUT /v1/email-templates/{kind}`    |
+| `delete(kind)`                 | `DELETE /v1/email-templates/{kind}` |
+
+Five kinds, always all five: `workspace_invite`, `trial_ending_reminder`,
+`conversation_cap_warning`, `hired_agent_engagement_invite`, `hired_agent_engagement_started`. The
+kind is validated in the path, so an unknown one is a 400 naming it.
+
+`preview` renders through the real send-time renderer and reports **tokens you wrote that this kind
+does not supply** — those render as nothing in the delivered mail, silently, and this is the only
+place that tells you.
+
+`delete` has a body, not a 204: `{"restored": false}` with a 200 means the workspace was already on
+the built-in. It deletes the override rather than copying today's default into it.
+
+### `chatly.knowledgeGaps()`
+
+| Method                            | HTTP                                 |
+| --------------------------------- | ------------------------------------ |
+| `list()` / `list(Query)` → `List` | `GET /v1/knowledge-gaps`             |
+| `update(gapId, status)`           | `PATCH /v1/knowledge-gaps/{id}`      |
+| `draft(gapId)`                    | `POST /v1/knowledge-gaps/{id}/draft` |
+
+Most-asked first, and complete by construction: the recorder caps a workspace at 200 open gaps, so a
+workspace stuck at 200 is at the cap rather than mid-page.
+
+The `?status` **filter is ignored when unrecognised** rather than refused — the handler `safeParse`s
+it — so a typo returns every status with a 200. The body on `update` is strict: there, an unknown
+status is a 400.
+
+`draft` writes a **draft** article, invisible in any help centre until published, and answers 201
+with either the new id or a reason there is none.
+
+### `chatly.triggers()`
+
+| Method                                           | HTTP                       |
+| ------------------------------------------------ | -------------------------- |
+| `list()` / `list(Query)` → `Page`, `listAuto(…)` | `GET /v1/triggers`         |
+| `create(Map)`                                    | `POST /v1/triggers`        |
+| `delete(triggerId)`                              | `DELETE /v1/triggers/{id}` |
+
+`create` is an **upsert**: pass `id` and it replaces that trigger, omit it and one is created —
+which is why there is no PATCH, and why a stale `id` in a config file overwrites rather than
+conflicts.
+
+`actions` must hold 1 to 20 entries; a trigger that does nothing is refused. `conditions` is
+optional and empty means "every occurrence of this event". An event name nothing publishes saves
+fine and never fires, so if a trigger never runs, check the name before the conditions.
 
 ---
 
@@ -599,7 +1010,10 @@ outward sign that it is on — and an unset environment variable is exactly how 
 
 ## The escape hatch
 
-140 API routes accept an API key; 55 have a typed method above. For the other 85:
+174 API routes accepted an API key when the shared manifest was last audited against the handlers,
+and all 162 on that list have a typed method above. For whatever is not on it — routes have been
+opened since that count was written down, three of which (`DELETE /v1/webhooks/{id}`, `GET /v1/me`,
+`GET /v1/workspaces/me`) have since reached the manifest and are methods now:
 
 ```java
 // any verb, any path, through the same auth, idempotency, retry and error handling
@@ -624,7 +1038,7 @@ whatever the JSON decoded to.
 
 Methods return `Map<String, Object>`, not generated response types. Two reasons.
 
-First, zero dependencies means no reflective binder — and hand-written response classes for 55
+First, zero dependencies means no reflective binder — and hand-written response classes for 162
 routes would be a second schema to keep in sync with the API, which drifts the first time a field is
 added and then silently drops it.
 
@@ -648,7 +1062,7 @@ own tests. Use a `LinkedHashMap` there.
 
 ## Tests
 
-151 JUnit 5 assertions across nine classes. Nothing in the suite touches the public network, needs
+157 JUnit 5 tests across ten classes. Nothing in the suite touches the public network, needs
 an API key, or needs a running API: HTTP is driven either by an injected `Transport.Sender` or by a
 loopback `com.sun.net.httpserver.HttpServer` on an ephemeral port.
 
@@ -661,14 +1075,14 @@ validates the request the SDK _intended_; only real HTTP validates the request i
 
 ### `surface.lock.json`
 
-`mvn test` regenerates [`surface.lock.json`](./surface.lock.json) by **calling all 55 methods** and
+`mvn test` regenerates [`surface.lock.json`](./surface.lock.json) by **calling all 162 methods** and
 recording the `METHOD /path` each one actually issued, with interpolated segments normalised back to
 the manifest's placeholder form. It then asserts that set equals
 `packages/sdk-spec/surface.json` — the manifest shared by every Chatly SDK.
 
 Each entry also carries a `shape`: the top-level shape of the route's successful response, one of
-`array` (14 routes), `page` (10), `object` (30) and `empty` (1 — `macros.delete` is the only real
-204 here). That column is **hand-written** in
+`array` (33 routes), `page` (13), `object` (115) and `empty` (1 — `macros.delete` is the only real
+204 here; six other DELETEs answer 200 with a body). That column is **hand-written** in
 [`ResponseShape`](./src/test/java/com/chatlychat/chatly/ResponseShape.java), from the handlers'
 `@ZodResponse` schemas, and deliberately _not_ read from the manifest: a fixture derived from the
 manifest agrees with the manifest even when the manifest is wrong, and the manifest has been wrong.
@@ -680,14 +1094,17 @@ the real API with green suites, because their fake transports answered _every_ r
 
 So the fake here answers each route with a body of **its own declared shape**, the suite asserts the
 value each method hands back really has that shape — which is what catches a method that wraps or
-unwraps even when the request it issued was perfect — and a separate test feeds all ten
-auto-paginators a bare array and requires each to throw. The gate then diffs eight SDKs'
+unwraps even when the request it issued was perfect — and a separate test feeds all thirteen
+auto-paginators a bare array and requires each to throw. One route gets a body of its own:
+`channels.adapters` is an array of _strings_, so the shared `[{…}]` fixture could not exercise the
+decoder whose job is to refuse exactly that. The override is capped at one entry by a test. The gate then diffs eight SDKs'
 independently written columns against the manifest, so a wrong row would need eight authors to
 misread the same handler.
 
 The lock is committed, and regenerating it is part of the test run rather than a script someone
 forgets. It exists because the cross-language parity gate used to match path strings in SDK _source
-text_, which credited this SDK with 55/55 while two of those methods did not exist: a Javadoc
+text_, which credited this SDK with every route on the manifest as it then stood — 55 of them —
+while two of those methods did not exist: a Javadoc
 paragraph explaining that two routes were broken happened to contain their paths, and the gate read
 documentation as implementation. Executing the method cannot be fooled that way, and it also catches
 a path assembled through a helper, a one-character typo in a literal segment, and a method that

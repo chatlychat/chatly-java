@@ -161,4 +161,62 @@ public final class ContactsResource extends Resource {
   public Pager<Map<String, Object>> journeyAuto(String contactId, Query query) {
     return pager(COLLECTION + "/" + seg(contactId, "contactId") + "/journey", query);
   }
+
+  /**
+   * Fetch this contact's live customer cards. {@code POST /v1/contacts/{contactId}/cards}
+   *
+   * <p><strong>A POST that reads.</strong> It writes nothing: it fans out to the urls configured
+   * with {@code chatly.customerCards()}, signs each request with that card's secret, and returns
+   * what your own backend answered. The 201 is only Nest's default for a POST with no
+   * {@code @HttpCode}.
+   *
+   * <p>One entry per configured card, capped at 25, and <strong>{@code state} is the field to
+   * read</strong>: a card with no blocks did not necessarily fail — it may have returned nothing
+   * for this contact, timed out, or be misconfigured, and {@code state} says which. An empty
+   * {@code blocks} with no look at {@code state} is how "the integration is broken" and "this
+   * customer has no orders" get confused.
+   *
+   * <p>{@code contacts:read}, not a write permission, which matches what it actually does.
+   */
+  public Map<String, Object> cards(String contactId) {
+    return cards(contactId, null);
+  }
+
+  /**
+   * As {@link #cards(String)}, scoped to one conversation.
+   *
+   * @param conversationId optional context passed to your card endpoints — the thread the agent is
+   *     looking at, so a card can answer "about this conversation" rather than only "about this
+   *     person". The body is strict, so this is the only key it accepts; pass {@code null} to omit
+   *     it rather than sending an explicit null.
+   */
+  public Map<String, Object> cards(String contactId, String conversationId) {
+    String path = COLLECTION + "/" + seg(contactId, "contactId") + "/cards";
+    Map<String, Object> payload = body();
+    put(payload, "conversationId", conversationId);
+    return object(transport.post(path, Query.of(), payload), path);
+  }
+
+  /**
+   * Weekly sentiment buckets for one contact. {@code GET /v1/contacts/{id}/mood}
+   *
+   * <p>Computed from a sentiment cache over the contact's messages, not recomputed per call.
+   *
+   * <p><strong>An empty {@code buckets} array means "not enough signal", not "neutral".</strong>
+   * A contact with two messages has no mood here, and reading the absence as calm is the mistake
+   * this sentence exists to prevent.
+   *
+   * @param days 7 to 365, default 90. Coerced from the query string, so a non-numeric value is a
+   *     400 from the schema rather than a silent default — unlike the report windows on
+   *     {@code chatly.reports()}, which clamp.
+   */
+  public Map<String, Object> mood(String contactId, Integer days) {
+    String path = COLLECTION + "/" + seg(contactId, "contactId") + "/mood";
+    return object(transport.get(path, Query.of().add("days", days)), path);
+  }
+
+  /** A contact's mood over the default 90-day window. */
+  public Map<String, Object> mood(String contactId) {
+    return mood(contactId, null);
+  }
 }

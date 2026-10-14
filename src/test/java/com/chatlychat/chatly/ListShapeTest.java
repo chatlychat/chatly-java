@@ -51,12 +51,19 @@ class ListShapeTest {
   /**
    * The manifest's {@code paged} count, as an anti-vacuity floor.
    *
-   * <p><strong>10.</strong> It read 8, then 7, then 10, and the journey is the point: the flag was
-   * wrong in <em>both</em> directions at once. {@code macros.list} was flagged and is
+   * <p><strong>13.</strong> It read 8, then 7, then 10, then 13, and the journey is the point: the
+   * flag has been wrong in <em>both</em> directions. {@code macros.list} was flagged and is
    * {@code @PaginationExempt} — a bare array, 200 rows by usage rank — while
    * {@code contacts.journey}, {@code conversations.unattended} and {@code search.query} return real
    * cursors and were not flagged. Removing the false one took it to 7; adding the three missing
-   * ones takes it to 10.
+   * ones took it to 10.
+   *
+   * <p>10 to 13 is the completed surface: {@code bots.list}, {@code bots.deliveries} and
+   * {@code triggers.list}, each of which ends in {@code buildPaginatedResponse} inside its service
+   * and so was easy to miss by reading only the controller. {@code billing.invoices} is
+   * deliberately NOT a fourteenth — it is cursor-paginated and spells its envelope
+   * {@code {data, nextCursor}}, so a walker keyed on {@code items} would report an empty page
+   * forever.
    *
    * <p>The floor matters because every assertion below iterates the paged entries: if the manifest
    * stopped parsing, or someone quietly unflagged a route, the loop would run over a shorter list
@@ -64,7 +71,7 @@ class ListShapeTest {
    * reporting the number of things it managed to parse rather than the number that exist — has
    * happened twice in this repository, so the count is pinned rather than trusted.
    */
-  private static final int EXPECTED_PAGED_ENTRIES = 10;
+  private static final int EXPECTED_PAGED_ENTRIES = 13;
 
   // ------------------------------------------------------- paged routes
 
@@ -125,6 +132,60 @@ class ListShapeTest {
     }
   }
 
+  // -------------------------------------------- the two odd envelopes
+
+  /**
+   * {@code GET /v1/channels/adapters} is an array of STRINGS, and the SDK decodes it as one.
+   *
+   * <p>The manifest flags it as the single row where a decoder built for {@code [{…}]} fails. The
+   * generic {@code array} helper would not fail — it wraps a scalar row as {@code {"value": "web"}}
+   * — so the failure would have been a list of maps a caller has to unwrap, discovered by printing
+   * it. Hence a separate decoder, and hence this test: the positive case, plus the loud refusal
+   * when an element is not a string, which is what tells a future reader that the wrapping
+   * behaviour is deliberately not in play here.
+   */
+  @Test
+  void channelAdaptersDecodesAnArrayOfStringsAndRefusesAnythingElse() {
+    FakeSender sender = new FakeSender().then(200, "[\"web\",\"email\",\"whatsapp\"]");
+
+    List<String> adapters = sender.client().channels().adapters();
+
+    assertEquals(List.of("web", "email", "whatsapp"), adapters);
+    assertEquals("https://api.chatlychat.com/v1/channels/adapters", sender.lastRequest().url());
+
+    com.chatlychat.chatly.errors.ChatlyException e =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            com.chatlychat.chatly.errors.ChatlyException.class,
+            () -> new FakeSender().then(200, "[{\"name\":\"web\"}]").client().channels().adapters());
+    assertTrue(e.getMessage().contains("/v1/channels/adapters"), e.getMessage());
+    assertTrue(e.getMessage().contains("to be a string"), e.getMessage());
+  }
+
+  /**
+   * {@code GET /v1/billing/invoices} pages on {@code data}, and nothing in this SDK walks it.
+   *
+   * <p>It is the one cursor-paginated route declared {@code object}. Two halves, and the second is
+   * the one that matters: {@link BillingResource#invoices()} hands the envelope back whole, and
+   * {@link Page#fromDecoded} <em>refuses</em> that envelope — so a walker pointed at this route
+   * fails loudly instead of reading {@code items}, finding nothing, and reporting a workspace with
+   * no invoices. That silent-empty-page outcome is exactly what the Rust client shipped on a
+   * different route.
+   */
+  @Test
+  void billingInvoicesKeepsItsDataEnvelopeAndIsNotWalkable() {
+    String envelope = "{\"data\":[{\"id\":\"in_1\"}],\"nextCursor\":\"cur_2\"}";
+
+    Map<String, Object> page = new FakeSender().then(200, envelope).client().billing().invoices();
+    assertTrue(page.get("data") instanceof List, "the data array survives: " + page);
+    assertEquals("cur_2", page.get("nextCursor"));
+    assertFalse(page.containsKey("items"), "nothing renames `data` to `items`");
+
+    org.junit.jupiter.api.Assertions.assertThrows(
+        com.chatlychat.chatly.errors.ChatlyException.class,
+        () -> Page.fromDecoded(Json.parse(envelope), "/v1/billing/invoices"),
+        "a {data, nextCursor} envelope must not decode as a page");
+  }
+
   // ------------------------------------------------- bare-array routes
 
   /**
@@ -177,6 +238,12 @@ class ListShapeTest {
    * {@code deliveriesAuto}. What is checkable is which classes have any, and that is exactly what
    * would have gone wrong had {@code macros.listAuto} been written on the strength of the wrong
    * manifest row.
+   *
+   * <p>It is class-level, so it is coarse in one direction: {@code BillingResource} owns
+   * {@code billing.invoices}, which is cursor-paginated under a {@code data} key and must NOT have
+   * a walker, and this assertion would not notice one — the manifest marks that route
+   * {@code paged: false}, so the class is expected to have no pager at all, which is the thing it
+   * does check. A walker added there would fail here as an unexpected class.
    */
   @Test
   void aResourceOffersAPagerExactlyWhenTheManifestSaysPaged() {
@@ -193,6 +260,17 @@ class ListShapeTest {
     byNamespace.put("channels", ChannelsResource.class);
     byNamespace.put("billing", BillingResource.class);
     byNamespace.put("workspace", WorkspaceResource.class);
+    byNamespace.put("ai", AiResource.class);
+    byNamespace.put("bots", BotsResource.class);
+    byNamespace.put("bot_routes", BotRoutesResource.class);
+    byNamespace.put("brands", BrandsResource.class);
+    byNamespace.put("canvas_steps", CanvasStepsResource.class);
+    byNamespace.put("customer_cards", CustomerCardsResource.class);
+    byNamespace.put("customer_card_endpoints", CustomerCardEndpointsResource.class);
+    byNamespace.put("docs_sources", DocsSourcesResource.class);
+    byNamespace.put("email_templates", EmailTemplatesResource.class);
+    byNamespace.put("knowledge_gaps", KnowledgeGapsResource.class);
+    byNamespace.put("triggers", TriggersResource.class);
 
     // What the manifest implies: a class owning at least one paged entry.
     TreeSet<String> shouldHavePagers = new TreeSet<>();

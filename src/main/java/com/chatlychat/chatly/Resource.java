@@ -84,6 +84,48 @@ abstract class Resource {
     return List.copyOf(out);
   }
 
+  /**
+   * Decode a response that must be a JSON array of <em>strings</em>.
+   *
+   * <p>Exactly one route on the surface answers one: {@code GET /v1/channels/adapters} is
+   * {@code z.array(z.string())} and sends {@code ["web","email",…]}. {@link #array} would hand that
+   * back as a list of {@code {"value": "web"}} maps — reachable, but not what anyone wants from a
+   * list of adapter names, and the kind of thing a caller discovers by printing it.
+   *
+   * <p>A non-string element is a named failure rather than a {@code String.valueOf}: if that route
+   * ever starts returning objects, the right outcome is an error naming the route, not a list of
+   * {@code "{id=…}"} strings that looks like it worked.
+   */
+  protected static List<String> strings(Object decoded, String path) {
+    if (decoded == null) {
+      return List.of();
+    }
+    if (!(decoded instanceof List<?> rows)) {
+      throw new ChatlyException(
+          "expected a JSON array of strings from " + path + " but got " + Json.describe(decoded),
+          0,
+          "unexpected_response_shape",
+          null,
+          null,
+          null);
+    }
+    List<String> out = new ArrayList<>(rows.size());
+    for (Object row : rows) {
+      if (!(row instanceof String s)) {
+        throw new ChatlyException(
+            "expected every element from " + path + " to be a string but got "
+                + Json.describe(row),
+            0,
+            "unexpected_response_shape",
+            null,
+            null,
+            null);
+      }
+      out.add(s);
+    }
+    return List.copyOf(out);
+  }
+
   /** Fetch one page. */
   protected Page<Map<String, Object>> page(String path, Query query) {
     return Page.fromDecoded(transport.get(path, q(query)), path);
