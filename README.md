@@ -1010,6 +1010,72 @@ Webhooks.verifySignature(body, header, secret, Duration.ofSeconds(300), 17000000
 String header = Webhooks.signatureHeaderFor(body, secret, Instant.now().getEpochSecond());
 ```
 
+### Every other surface: `verifyChatlySignature`
+
+`verifySignature` above knows one header. Chatly signs **eight** kinds of outbound request, and the
+header name does not tell you which construction you are looking at: three of them send
+`x-chatly-signature` and sign three different strings, and two send their timestamp in
+**milliseconds**. So the general verifier takes the surface from you rather than guessing:
+
+```java
+ChatlySignatureResult r = Webhooks.verifyChatlySignature(
+    ChatlySignatureInput.builder()
+        .surface(ChatlySignatureSurface.AGENT_DELIVERY)
+        .body(rawBody)                          // byte[] as received, or a String (UTF-8)
+        .headers(request.headers().map())       // any Map<String, ? extends Collection<String>>
+        .secret(System.getenv("CHATLY_BOT_SIGNING_SECRET"))
+        .method(request.method())               // pass these on EVERY surface — see below
+        .path(pathAndQuery)                     // pathname + search, never scheme or host
+        .build());
+
+if (!r.ok()) {
+    log.warn("refused {}: {}", r.reasonCode(), r.message());
+    return ResponseEntity.status(400).build();
+}
+// r.surface(), r.timestampMs(), r.base(), r.secretIndex()
+```
+
+| `ChatlySignatureSurface`  | header                                                | signed string                        | `t` unit |
+| ------------------------- | ----------------------------------------------------- | ------------------------------------ | -------- |
+| `UNIFIED_V2`              | `x-chatly-signature-v2: t=…,v1=…`                     | `<t>.<METHOD>.<path>.<rawBody>`      | seconds  |
+| `AGENT_DELIVERY`          | `x-chatly-signature: t=…,v1=…`                        | `<t>.<rawBody>`                      | seconds  |
+| `EVENT_WEBHOOK`           | `x-livechat-signature: t=…,v1=…`                      | `<t>.<rawBody>`                      | seconds  |
+| `AI_TOOL_CALL`            | `x-chatly-signature: t=…,v1=…`                        | `<t>.<METHOD>.<path>.<rawBody>`      | seconds  |
+| `CANVAS_STEP`             | `x-chatly-canvas-signature: sha256=…` + `-ts`         | `<ts>.<rawBody>`                     | **ms**   |
+| `CUSTOMER_CARD`           | `x-chatly-signature: sha256=…` + `x-chatly-timestamp` | `<ts>.<rawBody>`                     | **ms**   |
+| `WORKFLOW_WEBHOOK`        | `x-chatly-signature-v2: t=…,v1=…`                     | `<t>.<rawBody>` (or the target base) | seconds  |
+| `WORKFLOW_WEBHOOK_LEGACY` | `x-chatly-signature: sha256=…`                        | `<rawBody>` — **no timestamp**       | n/a      |
+
+**It returns a reason, not a boolean.** One of eleven stable codes — `unknown_surface`,
+`missing_secret`, `missing_signature_header`, `duplicate_signature_header`,
+`malformed_signature_header`, `missing_timestamp`, `malformed_timestamp`,
+`timestamp_outside_tolerance`, `missing_request_target`, `replay_unprotected`,
+`signature_mismatch` — plus a `message` written to be printed. "Your clock is wrong" and "your secret
+is wrong" are different support tickets, and a `false` cannot tell them apart. Like
+`verifySignature`, it **never throws**, for any input including `null`.
+
+**The unified v2 header.** Every surface is moving to `x-chatly-signature-v2` over
+`<t>.<METHOD>.<path>.<rawBody>`, sent beside its legacy header. The default
+`V2Policy.PREFER` verifies the v2 header whenever it is present **and** you passed `method` and
+`path`, and the legacy header otherwise — so passing both on every surface gets you the stronger
+check the day the sender starts emitting it, with no code change. Once v2 is chosen it never falls
+back: a bad v2 digest beside a good legacy one is refused, and `r.surface()` reads `unified_v2` on
+a v2 success. `REQUIRE` refuses without v2; `IGNORE` reads only the legacy header.
+
+**Key rotation, both ends.** `.secrets(oldSecret, newSecret)` accepts either, and
+`r.secretIndex()` says which verified — an index into the list **you passed**, empties included,
+which is how you learn the old secret is finally unused. A `t=…,v1=…,v1=…` header from a sender
+mid-rotation verifies when any digest matches.
+
+**Refused on purpose:** a signature header that arrived twice (including under two casings —
+lookup is case-insensitive and collects across keys), which is a proxy merging or injecting one;
+a timestamp more than 300 s out in **either** direction (`toleranceSeconds(...)` changes it, exactly
+300 s is inside); and `WORKFLOW_WEBHOOK_LEGACY`, which can be replayed forever, unless you call
+`allowUnprotectedReplay(true)` — verify that call's v2 header as `WORKFLOW_WEBHOOK` instead.
+
+Behaviour is pinned by `src/test/resources/signature_vectors.json`, a corpus shared byte-for-byte by
+all eight backend SDKs; `ChatlySignatureTest` runs every vector in it.
+
 ---
 
 ## Identity verification
@@ -1101,7 +1167,8 @@ own tests. Use a `LinkedHashMap` there.
 
 ## Tests
 
-157 JUnit 5 tests across ten classes. Nothing in the suite touches the public network, needs
+240 JUnit 5 tests across thirteen classes (measured 2026-10-15; one per signature-corpus vector,
+so the figure grows with the corpus). Nothing in the suite touches the public network, needs
 an API key, or needs a running API: HTTP is driven either by an injected `Transport.Sender` or by a
 loopback `com.sun.net.httpserver.HttpServer` on an ephemeral port.
 

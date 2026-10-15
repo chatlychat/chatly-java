@@ -7,6 +7,17 @@ All notable changes to the Chatly Java SDK. This project follows
 
 ### Added
 
+- **`Webhooks.verifyChatlySignature(ChatlySignatureInput)` — one verifier for every surface Chatly
+  signs.** Event webhooks, agent deliveries, AI tool calls, canvas steps, customer cards, workflow
+  actions (v2 and legacy) and the unified `x-chatly-signature-v2` header, chosen by
+  `ChatlySignatureSurface` rather than guessed from a header name that three surfaces share. Returns
+  a `ChatlySignatureResult` record — `ok`, `surface`, a stable `reason` (eleven codes) and a
+  printable `message` on refusal; `timestampMs` (normalised to milliseconds, `null` on the legacy
+  workflow header), `base` and `secretIndex` on success. Accepts a secret list for rotation and
+  reports the caller's own index; prefers the v2 header when `method` and `path` are given and never
+  falls back from it; refuses a duplicated signature header instead of trial-verifying both. Never
+  throws. A port of `verifyChatlySignature` in `@chatlychat/sdk-node`, pinned by the shared
+  `signature_vectors.json` corpus. `Webhooks.verifySignature` is unchanged.
 - **`bots().rotateExternalSecret(botId, Instant activateAt)` — a rotation with an overlap window.**
   Sends `{"activateAt": "<Instant.toString()>"}` (always UTC, `Z`). The new secret is returned
   now; the old one keeps signing every delivery until `activateAt`, so a verifier holding both

@@ -5,6 +5,7 @@ import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -178,6 +179,48 @@ public final class Webhooks {
       Duration tolerance,
       long nowEpochSeconds) {
     return verifySignature(utf8(rawBody), signatureHeader, secret, tolerance, nowEpochSeconds);
+  }
+
+  /**
+   * Verify one signed request from ANY Chatly surface — event webhooks, agent deliveries, AI tool
+   * calls, canvas steps, customer cards, workflow actions, and the unified {@code
+   * x-chatly-signature-v2} header every one of them is moving to.
+   *
+   * <pre>{@code
+   * ChatlySignatureResult r = Webhooks.verifyChatlySignature(
+   *     ChatlySignatureInput.builder()
+   *         .surface(ChatlySignatureSurface.EVENT_WEBHOOK)
+   *         .body(rawBody)
+   *         .headers(httpHeaders.map())
+   *         .secret(System.getenv("CHATLY_WEBHOOK_SECRET"))
+   *         .method("POST")
+   *         .path("/webhooks/chatly")
+   *         .build());
+   * if (!r.ok()) {
+   *   log.warn("{}: {}", r.reasonCode(), r.message());
+   *   return ResponseEntity.status(400).build();
+   * }
+   * }</pre>
+   *
+   * <p><strong>Why it takes a surface.</strong> The header name does not determine the
+   * construction: three surfaces send {@code x-chatly-signature} and sign three different strings,
+   * and two of the eight send MILLISECONDS. The caller knows which route it is terminating; this
+   * method cannot. See {@link ChatlySignatureSurface}.
+   *
+   * <p><strong>Pass method and path</strong> even on a surface that does not sign them. With the
+   * default {@link ChatlySignatureInput.V2Policy#PREFER} that is what lets this pick up the
+   * stronger v2 header the day the sender starts emitting it, with no code change here.
+   *
+   * <p>{@link #verifySignature} above is unchanged and still answers a plain boolean for {@code
+   * x-livechat-signature}. This is the one to reach for when a refusal needs a reason, when a
+   * secret is mid-rotation ({@link ChatlySignatureInput.Builder#secrets(List)} plus {@link
+   * ChatlySignatureResult#secretIndex()}), or when the request is from any other surface.
+   *
+   * <p><strong>Never throws</strong>, for any input including null. Every failure is {@code ok ==
+   * false} with a stable {@link ChatlySignatureResult#reason()} and a printable message.
+   */
+  public static ChatlySignatureResult verifyChatlySignature(ChatlySignatureInput input) {
+    return ChatlySignatureVerifier.verify(input);
   }
 
   /**
