@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The 159 surface methods, each paired with a throwaway invocation — and the machinery that runs
+ * The 163 surface methods, each paired with a throwaway invocation — and the machinery that runs
  * one.
  *
  * <p>One list, used by two tests that ask different questions of it:
@@ -30,7 +30,7 @@ import java.util.function.Function;
  * code, and it cannot see a path assembled through a helper either. Executing the method can do
  * both.
  *
- * <p>The entries themselves live in four {@code SurfaceEntries*} classes: 159 of them plus this
+ * <p>The entries themselves live in four {@code SurfaceEntries*} classes: 163 of them plus this
  * harness is far past CONTRACT &sect;9's 650-line ceiling. This file is the harness, those are the
  * data, and the sample ids they share are in {@link SurfaceIds}.
  *
@@ -124,7 +124,7 @@ final class SurfaceCalls {
    * Execute one entry against a scripted transport and report the single request it made.
    *
    * <p>The scripted response is the body of the route's <strong>own declared shape</strong>, not
-   * one body for all 159. A fake that answers every route with {@code {items, nextCursor}} agrees
+   * one body for all 163. A fake that answers every route with {@code {items, nextCursor}} agrees
    * with any client that expects a page everywhere, which is precisely how the .NET and Rust
    * clients shipped a paginator over the bare-array {@code /v1/macros} with green suites.
    *

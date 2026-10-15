@@ -7,6 +7,14 @@ All notable changes to the Chatly Java SDK. This project follows
 
 ### Added
 
+- **`bots().rotateExternalSecret(botId, Instant activateAt)` — a rotation with an overlap window.**
+  Sends `{"activateAt": "<Instant.toString()>"}` (always UTC, `Z`). The new secret is returned
+  now; the old one keeps signing every delivery until `activateAt`, so a verifier holding both
+  never rejects one. The server caps it at 168 hours ahead (a 400, measured on its clock — not
+  re-checked here); a past instant, or a `null` here, is the old hard cut. The response now
+  carries `activatesAt` beside `signingSecret`: the switch instant, or `null` when the new secret
+  is already signing. The one-argument form is unchanged on the wire: still a hard cut, still the
+  body `{}`.
 - **The whole key-accessible surface: 107 new methods, 162 in total.** Eleven new namespace
   accessors — `ai()`, `bots()`, `botRoutes()`, `brands()`, `canvasSteps()`, `customerCards()`,
   `customerCardEndpoints()`, `docsSources()`, `emailTemplates()`, `knowledgeGaps()`, `triggers()` —

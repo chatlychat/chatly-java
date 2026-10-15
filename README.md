@@ -97,7 +97,7 @@ variable is the usual cause and the constructor is the easiest place to see it.
 
 ## The full method surface
 
-162 methods across 24 namespaces — the whole key-accessible surface. These are the API routes that
+163 methods across 25 namespaces — the whole key-accessible surface. These are the API routes that
 accept an API key; a route that requires a signed-in person is not here, because a method that
 always returns 403 is worse than no method at all. Contact block/unblock is the clearest example of
 what is deliberately missing: those routes record _who_ blocked a contact, and a key is not a
@@ -534,7 +534,7 @@ tool had and the next agent call goes out unauthenticated against your endpoint.
 | `redeliver(botId, deliveryId)`                             | `POST /v1/bots/{id}/deliveries/{did}/redeliver` |
 | `testDelivery(botId)`                                      | `POST /v1/bots/{id}/test-delivery`              |
 | `updateExternal(botId, Map)`                               | `PATCH /v1/bots/{id}/external`                  |
-| `rotateExternalSecret(botId)`                              | `POST /v1/bots/{id}/external/rotate-secret`     |
+| `rotateExternalSecret(botId[, Instant activateAt])`        | `POST /v1/bots/{id}/external/rotate-secret`     |
 
 Two kinds of row live here: a **Chatly persona** (a prompt and a model we run) and an **external
 agent** (`type: "external"` — a webhook we POST a signed payload to and wait for). `botType` is the
@@ -552,7 +552,13 @@ we sent, and the exact payload that was signed.
 `redeliver` sends the **same bytes, same `eventId`**, so a handler that dedupes on `eventId` will
 discard it. That is correct; a replay is for a delivery you never processed.
 
-`rotateExternalSecret` has no overlap window. Deploy the new secret to your verifier first.
+`rotateExternalSecret(botId)` is a hard cut: the new secret signs every delivery from the moment it
+returns, so deploy it to your verifier first. `rotateExternalSecret(botId, activateAt)` gives you a
+window instead — the new secret is returned now, but the **old one keeps signing every delivery
+until `activateAt`** (at most 168 hours ahead; the server refuses more with a 400, and an instant
+already past is a hard cut). Each delivery carries one signature, so hold both secrets in your
+verifier for the window. The response's `activatesAt` is the instant of the switch, or `null` when
+the new secret is already signing.
 
 `analytics` percentiles are p50/p95/max and never a mean; a `null` rate belongs to the other bot
 kind and is not zero.
@@ -725,6 +731,39 @@ conflicts.
 `actions` must hold 1 to 20 entries; a trigger that does nothing is refused. `conditions` is
 optional and empty means "every occurrence of this event". An event name nothing publishes saves
 fine and never fires, so if a trigger never runs, check the name before the conditions.
+
+### `chatly.visitors()`
+
+| Method                         | HTTP                                               |
+| ------------------------------ | -------------------------------------------------- |
+| `startConversation(contactId)` | `POST /v1/visitors/{contactId}/start-conversation` |
+
+Opens a conversation with a contact who did **not** write first, and answers
+`{"conversationId": "…"}`. No body and no query parameters — the contact id is the whole input.
+
+**It is off by default, per workspace.** The flag is
+`settings.proactiveOutreach.apiKeysMayStartConversations`; an owner or admin turns it on with
+`PATCH /v1/workspace/settings`, which needs a signed-in person and is therefore not in this SDK,
+and you can read its current value with `chatly.workspace().settings()`, which is. So a
+`PermissionException` here is more often that setting than your key's scopes: `conversations:write`
+was already grantable and is already held by keys minted for ticket bulk actions and schedule-send,
+so opening this route on the permission alone would have handed cold outreach to credentials nobody
+re-reviewed. Check the setting first.
+
+**Three per contact per hour**, counted per workspace and per _contact_ rather than per caller —
+the abuse shape is N threads aimed at one person, which a per-caller limit cannot see. That refusal
+is a `RateLimitException` whose `retryAfter()` is **empty**: the TTL arrives in the error body at
+`error.details.retryAfterSeconds` and no `Retry-After` header is sent. The global throttler buckets
+this route also inherits do send one, so `retryAfter()` is populated or empty depending on which
+limit refused — code that backs off only when it is present will hot-loop against the per-contact
+one.
+
+**An offline visitor is not notified.** The greeting is persisted and the widget renders it from
+history on their next page view; no email, no push, no provider message. An integration that needs
+to reach someone who has already left the site wants an email or SMS conversation instead.
+
+The other two routes on that controller — `GET /v1/visitors/live` and
+`GET /v1/visitors/{contactId}/pages` — carry no `@AllowApiKey()`, so they are not here.
 
 ---
 
@@ -1011,7 +1050,7 @@ outward sign that it is on — and an unset environment variable is exactly how 
 ## The escape hatch
 
 174 API routes accepted an API key when the shared manifest was last audited against the handlers,
-and all 162 on that list have a typed method above. For whatever is not on it — routes have been
+and all 163 on that list have a typed method above. For whatever is not on it — routes have been
 opened since that count was written down, three of which (`DELETE /v1/webhooks/{id}`, `GET /v1/me`,
 `GET /v1/workspaces/me`) have since reached the manifest and are methods now:
 
@@ -1038,7 +1077,7 @@ whatever the JSON decoded to.
 
 Methods return `Map<String, Object>`, not generated response types. Two reasons.
 
-First, zero dependencies means no reflective binder — and hand-written response classes for 162
+First, zero dependencies means no reflective binder — and hand-written response classes for 163
 routes would be a second schema to keep in sync with the API, which drifts the first time a field is
 added and then silently drops it.
 
@@ -1075,7 +1114,7 @@ validates the request the SDK _intended_; only real HTTP validates the request i
 
 ### `surface.lock.json`
 
-`mvn test` regenerates [`surface.lock.json`](./surface.lock.json) by **calling all 162 methods** and
+`mvn test` regenerates [`surface.lock.json`](./surface.lock.json) by **calling all 163 methods** and
 recording the `METHOD /path` each one actually issued, with interpolated segments normalised back to
 the manifest's placeholder form. It then asserts that set equals
 `packages/sdk-spec/surface.json` — the manifest shared by every Chatly SDK.

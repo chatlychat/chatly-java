@@ -37,7 +37,7 @@ import java.util.Objects;
  * {@code Map<String, Object>} for an object, {@code List<Map<String, Object>>} for an array,
  * {@link Page} for a paginated list. Not generated POJOs — see "Why maps and not POJOs" in the
  * README; the short version is that this SDK has zero runtime dependencies and therefore no
- * reflective binder, and hand-written response types for 159 routes would be a second schema to
+ * reflective binder, and hand-written response types for 163 routes would be a second schema to
  * keep in sync with the API.
  *
  * @see <a href="https://chatlychat.com/docs">chatlychat.com/docs</a>
@@ -89,6 +89,7 @@ public final class Chatly {
   private final EmailTemplatesResource emailTemplates;
   private final KnowledgeGapsResource knowledgeGaps;
   private final TriggersResource triggers;
+  private final VisitorsResource visitors;
 
   private Chatly(Transport transport) {
     this.transport = transport;
@@ -124,6 +125,7 @@ public final class Chatly {
     this.emailTemplates = new EmailTemplatesResource(transport);
     this.knowledgeGaps = new KnowledgeGapsResource(transport);
     this.triggers = new TriggersResource(transport);
+    this.visitors = new VisitorsResource(transport);
   }
 
   /** Start building a client. {@link Builder#apiKey} is the only required input. */
@@ -254,6 +256,17 @@ public final class Chatly {
   /** Triggers — event-driven rules. */
   public TriggersResource triggers() {
     return triggers;
+  }
+
+  /**
+   * Visitors — opening a conversation with a contact who has not written to you.
+   *
+   * <p>Gated by a workspace opt-in that is off by default, so read
+   * {@link VisitorsResource#startConversation} before wiring it up: a 403 from it is more often the
+   * setting than the key's scopes.
+   */
+  public VisitorsResource visitors() {
+    return visitors;
   }
 
   // ------------------------------------------------------------------- root

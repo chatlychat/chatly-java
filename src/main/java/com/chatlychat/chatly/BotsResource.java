@@ -1,5 +1,6 @@
 package com.chatlychat.chatly;
 
+import java.time.Instant;
 import java.util.Map;
 
 /**
@@ -228,17 +229,49 @@ public final class BotsResource extends Resource {
   }
 
   /**
-   * Issue a new signing secret for an external agent and return it once.
+   * Issue a new signing secret for an external agent and return it once — a hard cut.
    *
-   * <p>{@code POST /v1/bots/{id}/external/rotate-secret}
+   * <p>{@code POST /v1/bots/{id}/external/rotate-secret}, with the body {@code {}}.
    *
-   * <p><strong>There is no overlap window.</strong> The old secret stops verifying the moment this
-   * returns, so deploy the new one to your verifier first or you will reject every delivery in
-   * between. The refusal to overlap is deliberate — two valid secrets is two ways to forge a
-   * delivery.
+   * <p><strong>Without {@code activateAt} there is no overlap window.</strong> The new secret signs
+   * every delivery from the moment this returns and the old one signs none, so deploy the new one
+   * to your verifier first or you will reject every delivery in between. If you cannot redeploy
+   * atomically, use {@link #rotateExternalSecret(String, Instant)} instead.
+   *
+   * @return {@code signingSecret} (shown once) and {@code activatesAt}, which is {@code null} here:
+   *     the new secret is already signing.
    */
   public Map<String, Object> rotateExternalSecret(String botId) {
     String path = COLLECTION + "/" + seg(botId, "botId") + "/external/rotate-secret";
     return object(transport.post(path, Query.of(), Map.of()), path);
+  }
+
+  /**
+   * Issue a new signing secret now, but keep signing with the old one until {@code activateAt}.
+   *
+   * <p>{@code POST /v1/bots/{id}/external/rotate-secret}, with the body
+   * {@code {"activateAt": "<instant>"}}. The instant is sent as {@link Instant#toString()}, which is
+   * always UTC with a {@code Z}.
+   *
+   * <p>Until {@code activateAt} every delivery is still signed with the <em>old</em> secret; from
+   * then on, with the new one. There is exactly one signature per delivery, so during the window
+   * your verifier should hold both secrets and accept a delivery that verifies against either, then
+   * drop the old one once the switch has passed.
+   *
+   * <p>The server refuses an instant more than 168 hours ahead of <em>its</em> clock with a 400;
+   * that bound is deliberately not re-checked here. An instant already in the past is a hard cut,
+   * not an error. So is a deferred rotation on an agent that has no usable secret today. A
+   * {@code null} {@code activateAt} is the same request as {@link #rotateExternalSecret(String)}.
+   *
+   * @return {@code signingSecret} (shown once) and {@code activatesAt}: the instant the switch
+   *     happens, or {@code null} when the new secret is already signing (a hard cut).
+   */
+  public Map<String, Object> rotateExternalSecret(String botId, Instant activateAt) {
+    if (activateAt == null) {
+      return rotateExternalSecret(botId);
+    }
+    String path = COLLECTION + "/" + seg(botId, "botId") + "/external/rotate-secret";
+    return object(
+        transport.post(path, Query.of(), Map.of("activateAt", activateAt.toString())), path);
   }
 }

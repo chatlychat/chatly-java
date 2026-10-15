@@ -6,7 +6,7 @@ import java.util.Map;
 
 /**
  * The top-level shape of a successful response, and what this SDK's decoder expects from each of
- * the 162 routes.
+ * the 163 routes.
  *
  * <h2>Read this before changing a value</h2>
  *
@@ -54,6 +54,11 @@ import java.util.Map;
  *       {@code bot_routes.delete}, {@code triggers.delete}, {@code customer_cards.delete},
  *       {@code customer_card_endpoints.delete} and {@code docs_sources.delete} are all DELETEs with
  *       bodies. {@code macros.delete} remains the only real 204 on the surface.
+ *   <li>{@code visitors.start_conversation} is a {@code POST} that creates a conversation and is
+ *       an {@code object}, {@code {conversationId}}. Its handler carries no {@code @ZodResponse},
+ *       so the declaration is read off the service return type it forwards —
+ *       {@code Promise<{ conversationId: string }>} — which is the fallback the manifest's
+ *       {@code $shapeMeans} names for exactly this case.
  * </ul>
  */
 enum ResponseShape {
@@ -69,7 +74,7 @@ enum ResponseShape {
    */
   PAGE("page", 200, "{\"items\":[{\"id\":\"x_1\"}],\"nextCursor\":null}"),
 
-  /** A JSON object that is not a page. 115 routes. */
+  /** A JSON object that is not a page. 116 routes. */
   OBJECT("object", 200, "{\"id\":\"x_1\"}"),
 
   /**
@@ -333,6 +338,13 @@ enum ResponseShape {
     m.put("triggers.create", OBJECT);
     m.put("triggers.delete", OBJECT);
     m.put("triggers.list", PAGE);
+
+    // POST /v1/visitors/{contactId}/start-conversation — no `@ZodResponse` on
+    // the handler at all, so the shape comes off the service return type it
+    // forwards: `VisitorsService.startProactiveConversation` is declared
+    // `Promise<{ conversationId: string }>`. One key, and an object — not a
+    // page, which is the reading a `POST` that creates something could invite.
+    m.put("visitors.start_conversation", OBJECT);
 
     // A DELETE with a body: z.object({ ok: z.literal(true) }), and no
     // @HttpCode, so 200 and not the 204 the verb suggests.

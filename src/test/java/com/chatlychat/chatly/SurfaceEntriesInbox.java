@@ -11,9 +11,12 @@ import java.util.Map;
 
 /**
  * The inbox namespaces' later additions: {@code contacts}, {@code conversations},
- * {@code tickets}, {@code macros} and {@code reports}.
+ * {@code tickets}, {@code macros}, {@code reports} and {@code visitors}.
  *
- * <p>26 of the 104 routes added when this SDK's surface was completed. These namespaces already
+ * <p>26 of the 104 routes added when this SDK's surface was completed, plus
+ * {@code visitors.start_conversation}, which became key-accessible on 2026-10-14 and is the whole
+ * of the {@code visitors} namespace — the other two routes on that controller carry no
+ * {@code @AllowApiKey()}. These namespaces already
  * existed — their first routes are in {@link SurfaceEntriesCore} — so a reader looking for
  * {@code conversations.list} will not find it here and a reader looking for
  * {@code conversations.linked} will.
@@ -113,6 +116,16 @@ final class SurfaceEntriesInbox {
     e.add(new Entry("tickets", "time", "GET", "/v1/tickets/{id}/time",
         "/v1/tickets/" + TICKET + "/time",
         c -> c.tickets().time(TICKET)));
+
+    // ------------------------------------------------------ visitors
+    // The path parameter is spelled `{contactId}` in the manifest, not `{id}`,
+    // and `SurfaceCalls.normalise` matches placeholders positionally rather
+    // than by name — but the lock records the manifest's own spelling, so the
+    // template here must be the manifest's.
+    e.add(new Entry("visitors", "start_conversation", "POST",
+        "/v1/visitors/{contactId}/start-conversation",
+        "/v1/visitors/" + CONTACT + "/start-conversation",
+        c -> c.visitors().startConversation(CONTACT)));
   }
 
   private SurfaceEntriesInbox() {}

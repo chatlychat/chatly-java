@@ -13,7 +13,7 @@ import java.util.Map;
  * entries, as invocable ones.
  *
  * <p>One of four data classes behind {@link SurfaceCalls#all()}. They are separate files for a
- * mechanical reason — CONTRACT &sect;9 caps a file at 650 lines and 159 entries plus the harness is
+ * mechanical reason — CONTRACT &sect;9 caps a file at 650 lines and 163 entries plus the harness is
  * well past it — and split along namespace lines rather than arbitrarily, so "where is
  * {@code bots.deliveries} declared?" has an answer you can guess.
  *

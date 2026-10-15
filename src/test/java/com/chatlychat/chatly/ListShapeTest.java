@@ -271,6 +271,11 @@ class ListShapeTest {
     byNamespace.put("email_templates", EmailTemplatesResource.class);
     byNamespace.put("knowledge_gaps", KnowledgeGapsResource.class);
     byNamespace.put("triggers", TriggersResource.class);
+    // Not paged — `visitors.start_conversation` is the whole namespace and it
+    // answers an object. The row is here so the `doHavePagers` side of this
+    // assertion can see the class at all: a walker added to it would otherwise
+    // be invisible rather than an unexpected class.
+    byNamespace.put("visitors", VisitorsResource.class);
 
     // What the manifest implies: a class owning at least one paged entry.
     TreeSet<String> shouldHavePagers = new TreeSet<>();
