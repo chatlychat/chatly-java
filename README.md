@@ -1076,6 +1076,47 @@ a timestamp more than 300 s out in **either** direction (`toleranceSeconds(...)`
 Behaviour is pinned by `src/test/resources/signature_vectors.json`, a corpus shared byte-for-byte by
 all eight backend SDKs; `ChatlySignatureTest` runs every vector in it.
 
+### Minting one, to test your own handler: `signChatlyV2`
+
+The other direction, for a test that stands up a fake Chatly and fires a signed request at your own
+endpoint. Until this existed you had to re-derive `<t>.<METHOD>.<path>.<rawBody>` by hand from the
+documentation — and a hand-derived base string is the one thing a signature test must not have: get
+it wrong the same way in the test and nowhere else, and the test passes while production refuses
+every delivery.
+
+```java
+String header = Webhooks.signChatlyV2(
+    ChatlySignatureMintInput.builder()
+        .base(ChatlySignatureMintInput.Base.TARGET)   // TARGET: <t>.<METHOD>.<path>.<body>
+        .secret(secret)                               // BODY:   <t>.<body>
+        .timestampSeconds(Instant.now().getEpochSecond())   // SECONDS, never milliseconds
+        .method("POST")
+        .path("/hooks/chatly?run=7")                  // pathname + query, never the host
+        .body(rawBody)                                // byte[] or String
+        .build());
+// t=1760000000,v1=<64 hex>,b=t
+```
+
+`base` has **no default**: the two constructions are indistinguishable from the value alone, which
+is precisely why the `b=` marker exists, so a caller has to say which one they mean. `TARGET` emits
+`b=t` and `BODY` emits `b=b`; this never emits an absent marker, which on the wire means `BODY`.
+`Webhooks.chatlyV2BaseString(input)` returns the exact bytes the MAC is taken over, so a test can
+pin the construction and not only the digest.
+
+Named setters rather than six positional arguments, because the construction is three strings in a
+row and `signChatlyV2(secret, t, method, path, body)` compiles with `path` and `body` swapped — it
+then mints a digest nobody can reproduce, which arrives at the receiver as "signature mismatch" and
+sends whoever wrote it hunting their own secret. For the same reason `build()` **throws** on an
+input it cannot sign faithfully (no base, an empty secret, a negative timestamp, a null body, or a
+`TARGET` with no method or path), where the verifier never throws: a verifier that throws is an
+accepted webhook in a handler that forgot to catch, but a mint that quietly signs the wrong string
+is a test that passes while production fails.
+
+The one wire value it will not produce on its own is the workflow action's current **dual-digest**
+form, `t=<T>,v1=<target>,v1=<body>` with no marker. Build it from two mints by taking the `v1=`
+field out of each — which is exactly what the producer does, and what
+`ChatlySignatureMintTest` asserts.
+
 ---
 
 ## Identity verification

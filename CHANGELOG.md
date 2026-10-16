@@ -7,6 +7,19 @@ All notable changes to the Chatly Java SDK. This project follows
 
 ### Added
 
+- **`Webhooks.signChatlyV2(ChatlySignatureMintInput)` — mint an `x-chatly-signature-v2` value, for
+  a test that stands up a fake Chatly.** Builder-built input (`base`, `secret`, `timestampSeconds`,
+  `body`, `method`, `path`) rather than six positional arguments, because the construction is three
+  strings in a row and a swapped `path`/`body` compiles and mints a digest nobody can reproduce.
+  `base` has no default — `Base.TARGET` emits `b=t` over `<t>.<METHOD>.<path>.<rawBody>` and
+  `Base.BODY` emits `b=b` over `<t>.<rawBody>`; an absent marker is never emitted.
+  `Webhooks.chatlyV2BaseString(input)` returns the exact signed bytes, so a test can pin the
+  construction and not only the digest. Both **throw** on an input they cannot sign faithfully (no
+  base, an empty secret, a negative timestamp, a null body, a `TARGET` with no method or path),
+  which is the opposite of the verifier and for the opposite reason. A port of `signChatlyV2` in
+  `@chatlychat/sdk-node`, with both digests pinned in `ChatlySignatureMintTest` against values the
+  reference produced — a mint asserted against its own base-string construction agrees with a wrong
+  one. Not for signing real outbound traffic: nothing in this package sends a signed request.
 - **`Webhooks.verifyChatlySignature(ChatlySignatureInput)` — one verifier for every surface Chatly
   signs.** Event webhooks, agent deliveries, AI tool calls, canvas steps, customer cards, workflow
   actions (v2 and legacy) and the unified `x-chatly-signature-v2` header, chosen by

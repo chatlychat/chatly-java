@@ -326,6 +326,194 @@ class ChatlySignatureTest {
     assertEquals("\u0001a", ChatlySignatureVerifier.jsTrim("\u0001a"));
   }
 
+  // -------------------------------------------- the workflow action's dual-digest value
+
+  /*
+   * The one construction a real sender emits that the shared corpus does not hold.
+   *
+   * `WORKFLOW_WEBHOOK_V2_PHASE` in apps/worker/src/handlers/action-handlers/fire-webhook.ts is
+   * `'dual'` today, which puts TWO digests in one value and NO marker:
+   *
+   *     x-chatly-signature-v2: t=<T>,v1=<HMAC(<T>.<METHOD>.<path>.<body>)>,v1=<HMAC(<T>.<body>)>
+   *
+   * so a receiver that passes method and path gets the unified base and one that does not still
+   * verifies, with neither side changing on the day the sender drops to `'target'`. Three things
+   * have to hold for that to be true, and each is one test below: the target digest wins when a
+   * target is available, the body digest carries a receiver that has none, and `REQUIRE` binds the
+   * path rather than silently taking the weaker digest that is sitting right beside it.
+   *
+   * The two digests are PINNED from the reference implementation
+   * (`packages/sdk-node/src/signatures.ts`), not computed here: a test that mints with the same
+   * base-string code it is testing agrees with a wrong base string. Regenerate with (no double
+   * quotes in the shell string, so it survives a copy-paste):
+   *   node --input-type=module -e "import{createHmac}from'node:crypto';
+   *     const s='whsec_dual_phase',b=JSON.stringify({workflow:'wf_1',run:7});
+   *     const h=x=>createHmac('sha256',s).update(x).digest('hex');
+   *     console.log(h('1760000000.POST./hooks/chatly?run=7.'+b),h('1760000000.'+b));"
+   */
+  private static final String DUAL_BODY = "{\"workflow\":\"wf_1\",\"run\":7}";
+
+  private static final String DUAL_SECRET = "whsec_dual_phase";
+
+  private static final String DUAL_METHOD = "POST";
+
+  private static final String DUAL_PATH = "/hooks/chatly?run=7";
+
+  private static final long DUAL_NOW_MS = 1_760_000_000_000L;
+
+  private static final String DUAL_TARGET_DIGEST =
+      "f1b09a141a4ac0a8b9e2902225312f679caa016cb26df48aa6a0e0cf1e4f4b36";
+
+  private static final String DUAL_BODY_DIGEST =
+      "8e5164b6f89caf31b699bc6e3d8b413d5f8edc870a21fc8788745bfaf565b874";
+
+  /** Exactly what the worker sends: both digests, in that order, no `b=` field. */
+  private static final String DUAL_VALUE =
+      "t=1760000000,v1=" + DUAL_TARGET_DIGEST + ",v1=" + DUAL_BODY_DIGEST;
+
+  private static ChatlySignatureInput.Builder dual() {
+    return ChatlySignatureInput.builder()
+        .surface(ChatlySignatureSurface.WORKFLOW_WEBHOOK)
+        .body(DUAL_BODY)
+        .header("x-chatly-signature-v2", DUAL_VALUE)
+        .secret(DUAL_SECRET)
+        .nowMs(DUAL_NOW_MS);
+  }
+
+  @Test
+  @DisplayName("dual: method and path given — the TARGET digest verifies")
+  void theDualValueVerifiesTheTargetBase() {
+    ChatlySignatureResult r =
+        Webhooks.verifyChatlySignature(dual().method(DUAL_METHOD).path(DUAL_PATH).build());
+    assertTrue(r.ok(), r.message());
+    assertEquals("workflow_webhook", r.surface());
+    assertEquals(ChatlySignatureResult.Base.TARGET, r.base());
+    assertEquals(0, r.secretIndex());
+    assertEquals(DUAL_NOW_MS, r.timestampMs());
+  }
+
+  @Test
+  @DisplayName("dual: no method or path — the BODY digest still verifies")
+  void theDualValueVerifiesTheBodyBaseWithNoTarget() {
+    ChatlySignatureResult r = Webhooks.verifyChatlySignature(dual().build());
+    assertTrue(r.ok(), r.message());
+    assertEquals(ChatlySignatureResult.Base.BODY, r.base());
+  }
+
+  @Test
+  @DisplayName("dual: as unified_v2 it is the target base, and nothing else")
+  void theDualValueVerifiesAsUnifiedV2() {
+    ChatlySignatureResult r =
+        Webhooks.verifyChatlySignature(
+            dual().surface(ChatlySignatureSurface.UNIFIED_V2).method(DUAL_METHOD).path(DUAL_PATH).build());
+    assertTrue(r.ok(), r.message());
+    assertEquals("unified_v2", r.surface());
+    assertEquals(ChatlySignatureResult.Base.TARGET, r.base());
+
+    // unified_v2 accepts only the target base, so the body digest sitting beside it buys a
+    // receiver with no method/path nothing: it is a named refusal, not a quiet downgrade.
+    ChatlySignatureResult noTarget =
+        Webhooks.verifyChatlySignature(dual().surface(ChatlySignatureSurface.UNIFIED_V2).build());
+    assertEquals("missing_request_target", noTarget.reasonCode(), noTarget.message());
+  }
+
+  @Test
+  @DisplayName("dual: the method is case-normalised, as the base string says")
+  void theDualValueNormalisesTheMethodCase() {
+    ChatlySignatureResult r =
+        Webhooks.verifyChatlySignature(dual().method("post").path(DUAL_PATH).build());
+    assertTrue(r.ok(), r.message());
+    assertEquals(ChatlySignatureResult.Base.TARGET, r.base());
+  }
+
+  @Test
+  @DisplayName("dual: a rewritten path falls to the body base under PREFER and is REFUSED under REQUIRE")
+  void theDualValueUnderAWrongPath() {
+    // The cost of the dual phase, stated: a proxy that rewrote the path does not break the
+    // delivery, because the body digest is still there — but `base()` says BODY, so a receiver
+    // can SEE that the path was not covered.
+    ChatlySignatureResult prefer =
+        Webhooks.verifyChatlySignature(dual().method(DUAL_METHOD).path("/elsewhere").build());
+    assertTrue(prefer.ok(), prefer.message());
+    assertEquals(ChatlySignatureResult.Base.BODY, prefer.base());
+
+    // Which is why a receiver that wants the path bound in has to ask for it.
+    ChatlySignatureResult require =
+        Webhooks.verifyChatlySignature(
+            dual()
+                .method(DUAL_METHOD)
+                .path("/elsewhere")
+                .v2(ChatlySignatureInput.V2Policy.REQUIRE)
+                .build());
+    assertEquals("signature_mismatch", require.reasonCode(), require.message());
+
+    ChatlySignatureResult requireRight =
+        Webhooks.verifyChatlySignature(
+            dual()
+                .method(DUAL_METHOD)
+                .path(DUAL_PATH)
+                .v2(ChatlySignatureInput.V2Policy.REQUIRE)
+                .build());
+    assertTrue(requireRight.ok(), requireRight.message());
+    assertEquals(ChatlySignatureResult.Base.TARGET, requireRight.base());
+  }
+
+  @Test
+  @DisplayName("dual: one byte of body changed fails BOTH digests")
+  void oneByteOfBodyBreaksBothDualDigests() {
+    ChatlySignatureResult r =
+        Webhooks.verifyChatlySignature(
+            dual()
+                .body(DUAL_BODY.replace("\"run\":7", "\"run\":8"))
+                .method(DUAL_METHOD)
+                .path(DUAL_PATH)
+                .build());
+    assertEquals("signature_mismatch", r.reasonCode(), r.message());
+  }
+
+  @Test
+  @DisplayName("dual: 300s is inside the window, 301s is not")
+  void theDualValueIsBoundedByTheTolerance() {
+    assertTrue(
+        Webhooks.verifyChatlySignature(
+                dual().method(DUAL_METHOD).path(DUAL_PATH).nowMs(DUAL_NOW_MS + 300_000).build())
+            .ok(),
+        "exactly the tolerance is inside, in every SDK");
+    assertEquals(
+        "timestamp_outside_tolerance",
+        Webhooks.verifyChatlySignature(
+                dual().method(DUAL_METHOD).path(DUAL_PATH).nowMs(DUAL_NOW_MS + 301_000).build())
+            .reasonCode());
+  }
+
+  @Test
+  @DisplayName("dual: the value arriving twice is a duplicate, not two chances")
+  void twoDualHeadersAreADuplicate() {
+    ChatlySignatureResult r =
+        Webhooks.verifyChatlySignature(
+            dual()
+                .header("x-chatly-signature-v2", DUAL_VALUE)
+                .method(DUAL_METHOD)
+                .path(DUAL_PATH)
+                .build());
+    assertEquals("duplicate_signature_header", r.reasonCode(), r.message());
+  }
+
+  @Test
+  @DisplayName("dual: mid-rotation, the caller's own secret index is reported")
+  void theDualValueReportsTheCallersSecretIndex() {
+    ChatlySignatureResult r =
+        Webhooks.verifyChatlySignature(
+            dual()
+                .secrets("", "whsec_wrong", DUAL_SECRET)
+                .method(DUAL_METHOD)
+                .path(DUAL_PATH)
+                .build());
+    assertTrue(r.ok(), r.message());
+    assertEquals(2, r.secretIndex());
+    assertEquals(ChatlySignatureResult.Base.TARGET, r.base());
+  }
+
   // ---------------------------------------------------------------- exports
 
   @Test

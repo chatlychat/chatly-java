@@ -224,6 +224,62 @@ public final class Webhooks {
   }
 
   /**
+   * Mint an {@code x-chatly-signature-v2} value, for a test that stands up a fake Chatly.
+   *
+   * <pre>{@code
+   * String header = Webhooks.signChatlyV2(
+   *     ChatlySignatureMintInput.builder()
+   *         .base(ChatlySignatureMintInput.Base.TARGET)
+   *         .secret(secret)
+   *         .timestampSeconds(Instant.now().getEpochSecond())
+   *         .method("POST")
+   *         .path("/hooks/chatly?run=7")   // pathname + query, never the host
+   *         .body(rawBody)
+   *         .build());
+   * // t=1760000000,v1=<64 hex>,b=t
+   * }</pre>
+   *
+   * <p>Emits {@code b=t} for the unified base and {@code b=b} for the body base, and never an
+   * absent marker. The one wire value it cannot produce on its own is the workflow action's current
+   * DUAL-digest form, {@code t=<T>,v1=<target>,v1=<body>} with no marker: that is built from two
+   * mints by taking the {@code v1=} field out of each, which is exactly what the producer does
+   * ({@code digestOf} in {@code apps/worker/src/handlers/action-handlers/fire-webhook.ts}).
+   *
+   * <p>Unlike {@link #verifyChatlySignature}, this <strong>throws</strong> on an input it cannot
+   * sign faithfully — see {@link ChatlySignatureMintInput.Builder#build()}. A verifier that throws
+   * is an accepted webhook in a handler that forgot to catch; a mint that quietly signs the wrong
+   * string is a test that passes while production refuses every delivery.
+   *
+   * @param input what to sign. {@code null} is an {@link IllegalArgumentException}.
+   * @return the header value, {@code t=…,v1=…,b=…}
+   */
+  public static String signChatlyV2(ChatlySignatureMintInput input) {
+    if (input == null) {
+      throw new IllegalArgumentException("signChatlyV2: input is required");
+    }
+    return input.sign();
+  }
+
+  /**
+   * The exact bytes {@link #signChatlyV2} takes the MAC over, so a test can pin the construction
+   * itself rather than only the digest.
+   *
+   * <p>{@code <t>.<METHOD>.<path>.<rawBody>} for {@link ChatlySignatureMintInput.Base#TARGET} and
+   * {@code <t>.<rawBody>} for {@link ChatlySignatureMintInput.Base#BODY}, with the method
+   * upper-cased exactly as the verifier upper-cases it. Bytes, not a String, because a body is not
+   * always valid UTF-8 text.
+   *
+   * @param input what to sign. {@code null} is an {@link IllegalArgumentException}.
+   * @return the signed bytes
+   */
+  public static byte[] chatlyV2BaseString(ChatlySignatureMintInput input) {
+    if (input == null) {
+      throw new IllegalArgumentException("chatlyV2BaseString: input is required");
+    }
+    return input.baseString();
+  }
+
+  /**
    * Build the header a delivery would carry. For testing your own handler, and for nothing else —
    * it needs the signing secret, so it cannot be used to forge anything you could not already
    * forge.
